@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'npm', cache-dependency-path: web/package-lock.json }
       - run: npm ci
       - run: npx tsc --noEmit
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'npm', cache-dependency-path: web/package-lock.json }
       - run: npm ci
       - run: npx eslint src/
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'npm', cache-dependency-path: web/package-lock.json }
       - run: npm ci
       - run: npx vitest run
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'npm', cache-dependency-path: web/package-lock.json }
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
@@ -73,7 +73,7 @@ jobs:
       NEXT_PUBLIC_ROOT_DOMAIN:             ${{ secrets.NEXT_PUBLIC_ROOT_DOMAIN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'npm', cache-dependency-path: web/package-lock.json }
       - run: npm ci
       - run: npm run build
@@ -88,7 +88,7 @@ jobs:
       NEXT_PUBLIC_ROOT_DOMAIN:             ${{ secrets.NEXT_PUBLIC_ROOT_DOMAIN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'npm', cache-dependency-path: web/package-lock.json }
       - run: npm ci
       - run: npm run build

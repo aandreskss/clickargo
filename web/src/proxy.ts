@@ -69,7 +69,8 @@ export async function proxy(request: NextRequest) {
   }
 
   // Admin requiere AAL2 (MFA verificado).
-  if (user && !slug && pathname.startsWith("/admin") && pathname !== "/admin/login") {
+  const ADMIN_MFA_PAGES = ["/admin/login", "/admin/mfa-setup", "/admin/mfa-verify"];
+  if (user && !slug && pathname.startsWith("/admin") && !ADMIN_MFA_PAGES.includes(pathname)) {
     if (currentLevel !== "aal2") {
       const dest = nextLevel === "aal2" ? "/admin/mfa-verify" : "/admin/mfa-setup";
       return NextResponse.redirect(new URL(dest, request.url));

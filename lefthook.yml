@@ -1,0 +1,8 @@
+pre-commit:
+  commands:
+    gitleaks:
+      run: gitleaks detect --source . --no-banner
+      fail_text: "Posible secreto detectado. Revisa y elimínalo antes de hacer commit."
+    tsc:
+      run: cd web && npx tsc --noEmit
+      fail_text: "Error de TypeScript. Corrígelo antes de hacer commit."

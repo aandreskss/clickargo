@@ -1,0 +1,29 @@
+# Secretos
+.env*
+*.pem
+*.key
+*.p8
+
+# Datos reales / fixtures
+fixtures/
+seed-prod.sql
+
+# Dependencias
+**/node_modules/
+**/.next/
+**/out/
+**/build/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
+
+# Vercel
+.vercel
+
+# Supabase
+supabase/.branches
+supabase/.temp

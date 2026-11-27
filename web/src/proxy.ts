@@ -7,22 +7,25 @@ const RESERVED = new Set(["www", "app", "api", "admin", "mail", "status", "sopor
   "monitoring", "health", "webhook", "webhooks", "ws", "socket", "realtime", "storage",
   "rpc", "rest", "graphql", "dashboard", "panel", "billing", "payment", "checkout"]);
 
-/** Devuelve el slug de la empresa según el subdominio (o null en el dominio raíz). */
-function tenantSlug(request: NextRequest): string | null {
+/** Slug desde subdominio (boxtogo.dominio.com) o null si es el dominio raíz. */
+function subdomainSlug(request: NextRequest): string | null {
   const hostname = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   if (!hostname.endsWith(`.${ROOT}`)) return null;
   const slug = hostname.slice(0, -(ROOT.length + 1));
   return slug && !RESERVED.has(slug) ? slug : null;
 }
 
+/** Slug desde la ruta /t/{slug}/... cuando no hay subdominio (ej. clickargo.vercel.app). */
+function pathSlug(pathname: string): string | null {
+  const m = pathname.match(/^\/t\/([^/]+)/);
+  return m && !RESERVED.has(m[1]) ? m[1] : null;
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const slug = tenantSlug(request);
-
-  // /t/* es interno: solo se alcanza vía reescritura desde un subdominio.
-  if (!slug && pathname.startsWith("/t/")) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
+  const slug = subdomainSlug(request);
+  // Cuando no hay subdominio, el slug viene del path /t/{slug}/...
+  const slugFromPath = !slug ? pathSlug(pathname) : null;
 
   // Generar nonce por petición para el CSP dinámico.
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
@@ -59,17 +62,22 @@ export async function proxy(request: NextRequest) {
 
   // Rutas protegidas
   if (!user) {
-    const isTenantPublic = slug && (
-      pathname === "/login" ||
-      pathname === "/registro" ||
-      pathname === "/portal-login" ||
-      pathname === "/portal-accept" ||
-      pathname.startsWith("/seguimiento/")
-    );
+    // Rutas públicas de tenant (por subdominio o por path /t/{slug}/...)
+    const tenantPublicPaths = ["/login", "/registro", "/portal-login", "/portal-accept"];
+    const isTenantPublic = slug
+      ? tenantPublicPaths.includes(pathname) || pathname.startsWith("/seguimiento/")
+      : slugFromPath
+        ? tenantPublicPaths.some(p => pathname === `/t/${slugFromPath}${p}`) ||
+          pathname.startsWith(`/t/${slugFromPath}/seguimiento/`)
+        : false;
+
     if (slug && !isTenantPublic) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
-    if (!slug && pathname.startsWith("/admin") && pathname !== "/admin/login") {
+    if (slugFromPath && !isTenantPublic) {
+      return NextResponse.redirect(new URL(`/t/${slugFromPath}/login`, request.url));
+    }
+    if (!slug && !slugFromPath && pathname.startsWith("/admin") && pathname !== "/admin/login") {
       return NextResponse.redirect(new URL("/admin/login", request.url));
     }
   }

@@ -18,7 +18,7 @@ export default async function AppLayout({ children, params }: { children: React.
   const { data: { user } } = await supabase.auth.getUser();
 
   // Falla cerrado: si el proxy no bloqueó la sesión expirada, lo hacemos aquí.
-  if (!user) redirect("/login");
+  if (!user) redirect(`/t/${slug}/login`);
 
   const { data: t } = await supabase.rpc("tenant_by_slug", { _slug: slug });
   const tenant = t![0];
@@ -57,13 +57,13 @@ export default async function AppLayout({ children, params }: { children: React.
   }
 
   // Clientes del portal no tienen acceso al panel interno.
-  if (m.role === "customer") redirect("/portal");
+  if (m.role === "customer") redirect(`/t/${slug}/portal`);
 
   // Roles con MFA obligatoria: verificar AAL2 antes de dar acceso.
   if (MFA_ROLES.has(m.role)) {
     const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (aal?.currentLevel !== "aal2") {
-      redirect(aal?.nextLevel === "aal2" ? "/mfa-verify" : "/mfa-setup");
+      redirect(aal?.nextLevel === "aal2" ? `/t/${slug}/mfa-verify` : `/t/${slug}/mfa-setup`);
     }
   }
 

@@ -20,12 +20,13 @@ export default async function TenantLogin({ params, searchParams }: {
         <p className="mb-5 text-sm text-[var(--color-text-muted)]">Inicia sesión para continuar.</p>
         <form action={signIn} className="space-y-4">
           <Notice error={errorMsg} info={okMsg} />
+          <input type="hidden" name="base" value={`/t/${slug}`} />
           <Field label="Correo" name="email" type="email" />
           <Field label="Contraseña" name="password" type="password" />
           <Button>Entrar</Button>
         </form>
         <p className="mt-5 text-sm text-[var(--color-text-muted)]">
-          ¿Te invitaron? <a href="/registro" className="font-medium text-[var(--color-text-link)] hover:underline">Crea tu cuenta</a> con el mismo correo de la invitación.
+          ¿Te invitaron? <a href={`/t/${slug}/registro`} className="font-medium text-[var(--color-text-link)] hover:underline">Crea tu cuenta</a> con el mismo correo de la invitación.
         </p>
       </Card>
     </main>

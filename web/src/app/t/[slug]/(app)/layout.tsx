@@ -32,7 +32,10 @@ export default async function AppLayout({ children, params }: { children: React.
           <p className="mb-4 text-sm text-[var(--color-text-muted)]">
             La cuenta de {tenant.name} está suspendida. Contacta a soporte para reactivarla.
           </p>
-          <form action={signOut}><Button variant="ghost">Cerrar sesión</Button></form>
+          <form action={signOut}>
+            <input type="hidden" name="base" value={`/t/${slug}`} />
+            <Button variant="ghost">Cerrar sesión</Button>
+          </form>
         </Card>
       </main>
     );
@@ -50,7 +53,10 @@ export default async function AppLayout({ children, params }: { children: React.
           <p className="mb-4 text-sm text-[var(--color-text-muted)]">
             Tu cuenta ({user.email}) no tiene acceso a esta empresa. Pide al administrador que te invite con este correo.
           </p>
-          <form action={signOut}><Button variant="ghost">Cerrar sesión</Button></form>
+          <form action={signOut}>
+            <input type="hidden" name="base" value={`/t/${slug}`} />
+            <Button variant="ghost">Cerrar sesión</Button>
+          </form>
         </Card>
       </main>
     );
@@ -87,7 +93,10 @@ export default async function AppLayout({ children, params }: { children: React.
           </div>
           <div className="flex items-center gap-3 text-sm text-[var(--color-text-muted)]">
             <span className="hidden sm:inline">{user.email} · {ROLES[m.role]}</span>
-            <form action={signOut}><Button variant="ghost">Salir</Button></form>
+            <form action={signOut}>
+              <input type="hidden" name="base" value={`/t/${slug}`} />
+              <Button variant="ghost">Salir</Button>
+            </form>
           </div>
         </div>
       </header>

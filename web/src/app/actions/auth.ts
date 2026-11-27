@@ -6,8 +6,6 @@ import { createClient } from "@/lib/supabase/server";
 import { errUrl, okUrl, type MsgKey } from "@/lib/messages";
 import { checkLimit, loginLimiter, signupLimiter } from "@/lib/rate-limit";
 
-const ALLOWED_REDIRECTS = new Set(["/login", "/admin/login", "/", "/portal-login"]);
-
 function mapAuthError(message: string): MsgKey {
   if (/invalid login/i.test(message))      return "credenciales_invalidas";
   if (/already registered/i.test(message)) return "correo_existente";
@@ -21,9 +19,18 @@ async function getClientIp(): Promise<string> {
   return h.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
 }
 
+/** Extrae el prefijo /t/{slug} del campo oculto "base" del formulario. */
+function tenantBase(formData: FormData): string {
+  const base = String(formData.get("base") ?? "");
+  // Validar que sea /t/{slug} y no un redirect arbitrario
+  return /^\/t\/[a-z0-9-]+$/.test(base) ? base : "";
+}
+
 export async function signIn(formData: FormData) {
-  const from = String(formData.get("from") ?? "/");
-  const loginPage = from === "/admin" ? "/admin/login" : "/login";
+  const base    = tenantBase(formData);
+  const isAdmin = !base && String(formData.get("from") ?? "") === "/admin";
+  const loginPage = isAdmin ? "/admin/login" : `${base}/login`;
+  const homePage  = isAdmin ? "/admin"       : `${base}/`;
 
   const ip = await getClientIp();
   const allowed = await checkLimit(loginLimiter, `ip:${ip}`);
@@ -35,13 +42,17 @@ export async function signIn(formData: FormData) {
     password: String(formData.get("password") ?? ""),
   });
   if (error) redirect(errUrl(loginPage, mapAuthError(error.message)));
-  redirect(from === "/admin" ? "/admin" : "/");
+  redirect(homePage);
 }
 
 export async function signUp(formData: FormData) {
+  const base     = tenantBase(formData);
+  const registro = `${base}/registro`;
+  const login    = `${base}/login`;
+
   const ip = await getClientIp();
   const allowed = await checkLimit(signupLimiter, `ip:${ip}`);
-  if (!allowed) redirect(errUrl("/registro", "error_generico"));
+  if (!allowed) redirect(errUrl(registro, "error_generico"));
 
   const supabase = await createClient();
   const email = String(formData.get("email") ?? "").trim();
@@ -54,21 +65,21 @@ export async function signUp(formData: FormData) {
     .gt("expires_at", new Date().toISOString())
     .limit(1);
 
-  if (!invites?.length) redirect(errUrl("/registro", "sin_invitacion"));
+  if (!invites?.length) redirect(errUrl(registro, "sin_invitacion"));
 
   const { data, error } = await supabase.auth.signUp({
     email,
     password: String(formData.get("password") ?? ""),
     options:  { data: { full_name: String(formData.get("full_name") ?? "").trim() } },
   });
-  if (error) redirect(errUrl("/registro", mapAuthError(error.message)));
-  if (!data.session) redirect(okUrl("/login", "revisa_correo"));
-  redirect("/");
+  if (error) redirect(errUrl(registro, mapAuthError(error.message)));
+  if (!data.session) redirect(okUrl(login, "revisa_correo"));
+  redirect(`${base}/`);
 }
 
 export async function signOut(formData: FormData) {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  const to = String(formData.get("to") ?? "/login");
-  redirect(ALLOWED_REDIRECTS.has(to) ? to : "/login");
+  const base = tenantBase(formData);
+  redirect(`${base}/login`);
 }

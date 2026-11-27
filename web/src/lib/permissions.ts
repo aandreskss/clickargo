@@ -1,6 +1,6 @@
 export type Role =
   | "owner" | "admin" | "manager" | "operator"
-  | "finance" | "sales" | "customs_broker" | "viewer";
+  | "finance" | "sales" | "customs_broker" | "viewer" | "customer";
 
 export type Module =
   | "quotes" | "shipments" | "masters" | "accounts"
@@ -111,6 +111,7 @@ const P: Record<Role, Matrix> = {
     documents:    ["view"],
     storage:      ["view"],
   },
+  customer: {},
 };
 
 export function can(role: Role, module: Module, action: Action): boolean {
@@ -130,6 +131,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   sales:          "Ventas",
   customs_broker: "Agente aduanal",
   viewer:         "Solo lectura",
+  customer:       "Cliente portal",
 };
 
 export const ASSIGNABLE_ROLES: { value: Role; label: string }[] = [

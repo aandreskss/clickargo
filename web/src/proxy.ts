@@ -59,7 +59,13 @@ export async function proxy(request: NextRequest) {
 
   // Rutas protegidas
   if (!user) {
-    const isTenantPublic = slug && (pathname === "/login" || pathname === "/registro");
+    const isTenantPublic = slug && (
+      pathname === "/login" ||
+      pathname === "/registro" ||
+      pathname === "/portal-login" ||
+      pathname === "/portal-accept" ||
+      pathname.startsWith("/seguimiento/")
+    );
     if (slug && !isTenantPublic) {
       return NextResponse.redirect(new URL("/login", request.url));
     }

@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MsgKey } from "@/lib/messages";
 import { checkLimit, emailUserLimiter, emailTenantLimiter } from "@/lib/rate-limit";
 import { getResendClient } from "./resend";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type SendResult = { ok: true } | { ok: false; code: MsgKey };
 
@@ -103,4 +104,77 @@ export async function sendWithPdfAttachment(params: {
   // 8. Resultado
   if (status === "sent") return { ok: true };
   return { ok: false, code: "correo_error" };
+}
+
+type NotifKind = "stage_changed" | "eta_changed" | "document_added";
+
+const NOTIF_SUBJECTS: Record<NotifKind, string> = {
+  stage_changed:   "Actualización de tu embarque",
+  eta_changed:     "Cambio de fecha estimada",
+  document_added:  "Nuevo documento disponible",
+};
+
+/** Envía un correo de notificación al cliente del portal (sin adjunto, sin sesión de usuario). */
+export async function sendNotificationEmail(params: {
+  tenantId: string;
+  to: string;
+  shipmentNumber: string;
+  kind: NotifKind;
+  portalUrl: string;
+  relatedId: string;
+}): Promise<{ ok: boolean }> {
+  const { tenantId, shipmentNumber, kind, portalUrl, relatedId } = params;
+
+  const emailParse = z.string().email().safeParse(params.to);
+  if (!emailParse.success) return { ok: false };
+  const to = emailParse.data;
+
+  if (!(await checkLimit(emailTenantLimiter, tenantId))) return { ok: false };
+
+  const resend = getResendClient();
+  if (!resend) return { ok: false };
+
+  const fromName = process.env.RESEND_FROM_NAME ?? "Clickargo";
+  const fromEmail = process.env.RESEND_FROM_EMAIL ?? "noreply@clickargo.app";
+  const from = `${fromName} <${fromEmail}>`;
+  const subject = `${NOTIF_SUBJECTS[kind]} ${shipmentNumber}`;
+
+  const bodyHtml = `
+    <p>Hola,</p>
+    <p>Hay una actualización en tu embarque <strong>${shipmentNumber}</strong>.</p>
+    <p><a href="${portalUrl}">Ver embarque en el portal</a></p>
+  `;
+
+  let status: "sent" | "failed" = "failed";
+  let providerMessageId: string | null = null;
+  let sendError: string | null = null;
+
+  try {
+    const { data, error } = await resend.emails.send({ from, to, subject, html: bodyHtml });
+    if (error || !data?.id) {
+      sendError = error?.message ?? "Error desconocido";
+    } else {
+      providerMessageId = data.id;
+      status = "sent";
+    }
+  } catch (err) {
+    sendError = err instanceof Error ? err.message : "Error desconocido";
+  }
+
+  // Usar admin client porque el cron no tiene sesión de usuario
+  const admin = createAdminClient();
+  await admin.from("outbound_emails").insert({
+    tenant_id: tenantId,
+    to_email: to,
+    subject,
+    template: "notification",
+    related_type: "shipment",
+    related_id: relatedId,
+    status,
+    provider_message_id: providerMessageId,
+    error: sendError,
+    created_by: null,
+  });
+
+  return { ok: status === "sent" };
 }

@@ -35,6 +35,11 @@ export const emailTenantLimiter = redis
   ? new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(50, "1 h"), prefix: "rl:email:tenant" })
   : null;
 
+// 20 consultas por IP por minuto para la página pública de seguimiento (Fase H).
+export const publicTrackingLimiter = redis
+  ? new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(20, "1 m"), prefix: "rl:tracking" })
+  : null;
+
 /** Verifica el límite. Devuelve true si puede continuar, false si debe bloquearse. */
 export async function checkLimit(
   limiter: Ratelimit | null,

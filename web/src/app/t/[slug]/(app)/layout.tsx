@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 const ROLES: Record<string, string> = {
   owner: "Dueño", admin: "Administrador", manager: "Gerente", operator: "Operador",
   finance: "Finanzas", sales: "Ventas", customs_broker: "Agente aduanal", viewer: "Solo lectura",
+  customer: "Cliente portal",
 };
 
 const MFA_ROLES = new Set(["owner", "admin"]);
@@ -54,6 +55,9 @@ export default async function AppLayout({ children, params }: { children: React.
       </main>
     );
   }
+
+  // Clientes del portal no tienen acceso al panel interno.
+  if (m.role === "customer") redirect("/portal");
 
   // Roles con MFA obligatoria: verificar AAL2 antes de dar acceso.
   if (MFA_ROLES.has(m.role)) {

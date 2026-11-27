@@ -16,8 +16,9 @@ const AJUSTES_TABS = [
   { value: "numeracion",  label: "Numeración",  href: "/ajustes/numeracion"  },
   { value: "equipo",      label: "Equipo",      href: "/ajustes/equipo"      },
   { value: "cargos",      label: "Cargos",      href: "/ajustes/cargos"      },
-  { value: "integracion", label: "Integración", href: "/ajustes/integracion" },
-  { value: "plantillas",  label: "Plantillas",  href: "/ajustes/plantillas"  },
+  { value: "integracion",    label: "Integración",    href: "/ajustes/integracion"    },
+  { value: "plantillas",     label: "Plantillas",     href: "/ajustes/plantillas"     },
+  { value: "notificaciones", label: "Notificaciones", href: "/ajustes/notificaciones" },
 ];
 
 type Member = {

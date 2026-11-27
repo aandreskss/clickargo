@@ -150,6 +150,13 @@ export const MSG = {
   almacenaje_eliminado:      "Estadía de almacenaje eliminada.",
   almacenaje_bloqueado:      "No se puede eliminar una estadía que ya tiene cargo creado.",
   fecha_salida_invalida:     "La fecha de salida no puede ser anterior a la fecha de entrada.",
+  // portal del cliente
+  invitacion_invalida:    "El enlace no es válido o ya venció.",
+  portal_sin_acceso:      "No tienes acceso a este recurso.",
+  portal_acceso_revocado: "Acceso al portal revocado.",
+  enlace_generado:        "Enlace de seguimiento generado.",
+  enlace_revocado:        "Enlace de seguimiento revocado.",
+  prefs_guardadas:        "Preferencias de notificación guardadas.",
   // genérico
   sin_permiso_ajustes:           "Solo dueño o administrador puede acceder a los ajustes.",
   error_generico:                "No se pudo completar la acción. Inténtalo de nuevo.",

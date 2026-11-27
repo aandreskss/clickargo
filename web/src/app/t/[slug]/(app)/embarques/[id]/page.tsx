@@ -22,16 +22,17 @@ import { calcStay } from "@/lib/storage-math";
 import { SendEmailTrigger } from "@/components/send-email-trigger";
 import { FileDropZone } from "@/components/file-drop-zone";
 import CargoForm from "./cargo-form";
+import { generateTrackingLink, revokeTrackingLink } from "@/app/actions/portal";
 
 export default async function FichaEmbarque({
   params,
   searchParams,
 }: {
   params: Promise<{ slug: string; id: string }>;
-  searchParams: Promise<{ ok?: string; error?: string; tab?: string }>;
+  searchParams: Promise<{ ok?: string; error?: string; tab?: string; tracking_token?: string }>;
 }) {
   const { slug, id } = await params;
-  const { ok, error, tab = "resumen" } = await searchParams;
+  const { ok, error, tab = "resumen", tracking_token } = await searchParams;
   const okMsg    = decode(ok);
   const errorMsg = decode(error);
 
@@ -157,6 +158,14 @@ export default async function FichaEmbarque({
       ? supabase.from("shipment_margin").select("currency, venta, costo, margen, margen_pct").eq("shipment_id", id)
       : Promise.resolve({ data: null }),
   ]);
+
+  // Tracking link (para sección en tab Resumen)
+  const { data: trackingLink } = await supabase
+    .from("tracking_links")
+    .select("id, revoked_at, created_at")
+    .eq("tenant_id", tenant.id)
+    .eq("shipment_id", id)
+    .maybeSingle();
 
   // Datos del tab Almacenaje
   const { data: storageStays } = await supabase
@@ -417,6 +426,37 @@ export default async function FichaEmbarque({
               pdfHref={`/api/documentos/embarque-aviso/${id}`}
               action={sendArrivalNoticePdf}
             />
+          </div>
+
+          {/* Enlace público de seguimiento */}
+          <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+            <h3 className="mb-2 text-sm font-semibold">Enlace público de seguimiento</h3>
+            {tracking_token && (
+              <div className="mb-3 rounded bg-[var(--color-surface-subtle)] p-3 text-sm">
+                <p className="mb-1 font-medium text-[var(--color-text)]">Enlace generado (cópialo ahora — no volverá a mostrarse):</p>
+                <code className="break-all text-xs">
+                  {`https://${slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000"}/seguimiento/${tracking_token}`}
+                </code>
+              </div>
+            )}
+            {!trackingLink || trackingLink.revoked_at ? (
+              <form action={generateTrackingLink}>
+                <input type="hidden" name="shipment_id" value={id} />
+                <Button type="submit" variant="ghost">Generar enlace público</Button>
+              </form>
+            ) : (
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-[var(--color-text-muted)]">Enlace activo desde {new Date(trackingLink.created_at).toLocaleDateString("es-DO")}</span>
+                <form action={revokeTrackingLink}>
+                  <input type="hidden" name="shipment_id" value={id} />
+                  <Button type="submit" variant="danger">Revocar</Button>
+                </form>
+                <form action={generateTrackingLink}>
+                  <input type="hidden" name="shipment_id" value={id} />
+                  <Button type="submit" variant="ghost">Regenerar</Button>
+                </form>
+              </div>
+            )}
           </div>
         </Card>
       )}

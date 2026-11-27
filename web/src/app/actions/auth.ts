@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { errUrl, okUrl, type MsgKey } from "@/lib/messages";
 import { checkLimit, loginLimiter, signupLimiter } from "@/lib/rate-limit";
 
-const ALLOWED_REDIRECTS = new Set(["/login", "/admin/login", "/"]);
+const ALLOWED_REDIRECTS = new Set(["/login", "/admin/login", "/", "/portal-login"]);
 
 function mapAuthError(message: string): MsgKey {
   if (/invalid login/i.test(message))      return "credenciales_invalidas";

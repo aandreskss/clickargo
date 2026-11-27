@@ -5,11 +5,12 @@
 -- de modo que ALL las políticas y RPCs existentes que usan is_member() bloqueen
 -- automáticamente a clientes del portal sin tener que tocar cada objeto.
 -- Luego agregamos políticas customer-específicas solo donde corresponde.
+--
+-- IDEMPOTENTE: se puede re-ejecutar sin errores.
 -- ════════════════════════════════════════════════════════════════════════════
 
--- ── 1. ENUM + columna account_id en memberships ──────────────────────────────
-
-ALTER TYPE public.tenant_role ADD VALUE IF NOT EXISTS 'customer';
+-- ── 1. COLUMNA account_id en memberships ─────────────────────────────────────
+-- NOTA: 'customer' se agrega al enum en 0022_portal_enum.sql (transacción previa).
 
 ALTER TABLE public.memberships
   ADD COLUMN IF NOT EXISTS account_id uuid
@@ -74,29 +75,29 @@ $$;
 -- Las políticas existentes con is_member ahora excluyen customers (ver paso 2).
 -- Aquí solo agregamos los accesos permitidos al cliente del portal.
 
--- memberships: customer ve su propio registro (para que el portal lea account_id y is_active)
+DROP POLICY IF EXISTS memberships_customer_sel ON public.memberships;
 CREATE POLICY memberships_customer_sel ON public.memberships FOR SELECT TO authenticated
   USING (user_id = auth.uid() AND role = 'customer');
 
--- accounts: customer ve solo su propia cuenta (para mostrar nombre en portal)
+DROP POLICY IF EXISTS accounts_customer_sel ON public.accounts;
 CREATE POLICY accounts_customer_sel ON public.accounts FOR SELECT TO authenticated
   USING (
     private.is_customer(tenant_id)
     AND id = private.customer_account_id(tenant_id)
   );
 
--- stage_definitions: customer ve las etapas de su tenant (nombres no son sensibles)
+DROP POLICY IF EXISTS stage_defs_customer_sel ON public.stage_definitions;
 CREATE POLICY stage_defs_customer_sel ON public.stage_definitions FOR SELECT TO authenticated
   USING (private.is_customer(tenant_id));
 
--- shipments: customer ve solo los de su account_id
+DROP POLICY IF EXISTS shipments_customer_sel ON public.shipments;
 CREATE POLICY shipments_customer_sel ON public.shipments FOR SELECT TO authenticated
   USING (
     private.is_customer(tenant_id)
     AND account_id = private.customer_account_id(tenant_id)
   );
 
--- shipment_events: customer ve solo los eventos visibles de sus embarques
+DROP POLICY IF EXISTS events_customer_sel ON public.shipment_events;
 CREATE POLICY events_customer_sel ON public.shipment_events FOR SELECT TO authenticated
   USING (
     visible_to_customer = true
@@ -108,7 +109,7 @@ CREATE POLICY events_customer_sel ON public.shipment_events FOR SELECT TO authen
     )
   );
 
--- shipment_documents: customer ve solo documentos visibles y limpios de sus embarques
+DROP POLICY IF EXISTS sd_customer_sel ON public.shipment_documents;
 CREATE POLICY sd_customer_sel ON public.shipment_documents FOR SELECT TO authenticated
   USING (
     visible_to_customer = true
@@ -134,7 +135,7 @@ CREATE POLICY profiles_select ON public.profiles FOR SELECT TO authenticated
       JOIN public.memberships b ON a.tenant_id = b.tenant_id
       WHERE a.user_id = auth.uid()
         AND b.user_id = profiles.id
-        AND a.role   != 'customer'   -- customers no ven perfiles del staff
+        AND a.role   != 'customer'
     )
   );
 
@@ -142,6 +143,7 @@ CREATE POLICY profiles_select ON public.profiles FOR SELECT TO authenticated
 -- La política existente "tenant members can view documents" ya usa is_member()
 -- que ahora excluye customers. Agregamos política adicional para customers.
 
+DROP POLICY IF EXISTS "customers can view their documents" ON storage.objects;
 CREATE POLICY "customers can view their documents"
   ON storage.objects FOR SELECT TO authenticated
   USING (
@@ -201,11 +203,9 @@ GRANT  EXECUTE ON FUNCTION public.list_team_members(uuid) TO authenticated;
 
 -- ── 8. AJUSTAR outbound_emails para correos del sistema (cron) ───────────────
 
--- created_by puede ser NULL cuando el sistema envía correos automáticos
 ALTER TABLE public.outbound_emails
   ALTER COLUMN created_by DROP NOT NULL;
 
--- Agregar 'notification' al enum de plantillas
 ALTER TABLE public.outbound_emails
   DROP CONSTRAINT IF EXISTS outbound_emails_template_check;
 ALTER TABLE public.outbound_emails
@@ -214,12 +214,11 @@ ALTER TABLE public.outbound_emails
 
 -- ── 9. TABLA portal_invitations ───────────────────────────────────────────────
 
-CREATE TABLE public.portal_invitations (
+CREATE TABLE IF NOT EXISTS public.portal_invitations (
   id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id   uuid        NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
   account_id  uuid        NOT NULL REFERENCES public.accounts(id) ON DELETE CASCADE,
   email       text        NOT NULL,
-  -- token_hash es sha256 del token aleatorio; el token RAW NUNCA se guarda en BD
   token_hash  text        NOT NULL UNIQUE,
   invited_by  uuid        REFERENCES auth.users(id),
   expires_at  timestamptz NOT NULL DEFAULT (now() + interval '48 hours'),
@@ -228,27 +227,31 @@ CREATE TABLE public.portal_invitations (
   CONSTRAINT pi_email_check CHECK (email ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$')
 );
 
-CREATE INDEX pi_tenant_idx ON public.portal_invitations (tenant_id, account_id);
-CREATE INDEX pi_hash_idx   ON public.portal_invitations (token_hash);
+CREATE INDEX IF NOT EXISTS pi_tenant_idx ON public.portal_invitations (tenant_id, account_id);
+CREATE INDEX IF NOT EXISTS pi_hash_idx   ON public.portal_invitations (token_hash);
 
+DROP TRIGGER IF EXISTS pi_lock_tid ON public.portal_invitations;
 CREATE TRIGGER pi_lock_tid
   BEFORE UPDATE ON public.portal_invitations
   FOR EACH ROW EXECUTE FUNCTION private.lock_tenant_id();
 
+DROP TRIGGER IF EXISTS pi_audit ON public.portal_invitations;
 CREATE TRIGGER pi_audit
   AFTER INSERT OR UPDATE OR DELETE ON public.portal_invitations
   FOR EACH ROW EXECUTE FUNCTION private.log_change();
 
 ALTER TABLE public.portal_invitations ENABLE ROW LEVEL SECURITY;
 
--- Staff con rol manager+ puede ver y gestionar invitaciones
+DROP POLICY IF EXISTS pi_staff_sel ON public.portal_invitations;
 CREATE POLICY pi_staff_sel ON public.portal_invitations FOR SELECT TO authenticated
-  USING (private.is_member(tenant_id));  -- is_member ya excluye customers
+  USING (private.is_member(tenant_id));
 
+DROP POLICY IF EXISTS pi_insert ON public.portal_invitations;
 CREATE POLICY pi_insert ON public.portal_invitations FOR INSERT TO authenticated
   WITH CHECK (private.has_role(tenant_id,
     ARRAY['owner','admin','manager']::public.tenant_role[]));
 
+DROP POLICY IF EXISTS pi_delete ON public.portal_invitations;
 CREATE POLICY pi_delete ON public.portal_invitations FOR DELETE TO authenticated
   USING (private.has_role(tenant_id,
     ARRAY['owner','admin','manager']::public.tenant_role[]));

@@ -38,6 +38,30 @@ export async function verifyTotp(formData: FormData) {
   redirect("/");
 }
 
+export async function enrollTotpAdmin(formData: FormData) {
+  const supabase = await createClient();
+  const friendlyName = String(formData.get("friendly_name") ?? "Autenticador");
+  const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName });
+  if (error) redirect(errUrl("/admin/mfa-setup", "error_generico"));
+  const uri = encodeURIComponent(data.totp.uri);
+  redirect(`/admin/mfa-setup?uri=${uri}&factorId=${data.id}`);
+}
+
+export async function verifyTotpAdmin(formData: FormData) {
+  const supabase = await createClient();
+  const factorId = String(formData.get("factorId") ?? "");
+  const code = String(formData.get("code") ?? "").replace(/\s/g, "");
+  const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
+  if (challengeError) redirect(errUrl("/admin/mfa-verify", "error_generico"));
+  const { error: verifyError } = await supabase.auth.mfa.verify({
+    factorId,
+    challengeId: challengeData.id,
+    code,
+  });
+  if (verifyError) redirect(errUrl(`/admin/mfa-verify?factorId=${factorId}`, "error_generico"));
+  redirect("/admin");
+}
+
 export async function unenrollTotp(formData: FormData) {
   const supabase = await createClient();
   const factorId = String(formData.get("factorId") ?? "");

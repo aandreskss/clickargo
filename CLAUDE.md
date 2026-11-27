@@ -128,8 +128,9 @@ campos aduanales: si dudas, deja el campo opcional y márcalo en docs/PREGUNTAS_
 | C | Embarques | ✅ Completa | Migración 0016 aplicada; test 10 pasando; dashboard ¿Qué hago hoy? activo |
 | D+E | Master / House BL + Tracking | ✅ Completa | Migración 0017 aplicada; test 11 listo; webhook Terminal49 con HMAC; cron diario; sugerencias en dashboard |
 | E2 | Cargos, margen y prefactura | ✅ Completa | Migraciones 0018+0019 aplicadas; test 12 listo; ERP layer (CSV/JSON/ADM skeleton); AES-256-GCM credentials; tab Cargos en embarques; /prefacturas + /prefacturas/[id]; ajustes/integracion |
-| F | PDF y correo (cotizaciones + embarques) | ✅ Completa | Migraciones 0020 pendientes de aplicar; test 13 listo; @react-pdf/renderer + Resend; API routes /api/documentos/*; docs/ subida Storage con magic bytes; ajustes/plantillas |
-| G | Portal cliente | — Siguiente | — |
+| F | PDF y correo (cotizaciones + embarques) | ✅ Completa | Migración 0020 aplicada (2026-11-26); test 13 listo; @react-pdf/renderer + Resend; API routes /api/documentos/*; docs/ subida Storage con magic bytes; ajustes/plantillas; FileDropZone con kindOptions; toggle visible_to_customer; proxy Content-Disposition en archivos/[id] |
+| G | Almacenaje con terceros | ✅ Completa | repair_0018_0019 + 0021 aplicados (2026-11-26); test 14 PASS; storage_stays + storage_stay_costs (can_see_costs); calcStay() puro + 10 Vitest tests; 5 Server Actions idempotentes; tab Almacenaje en embarques/[id]; /almacenaje lista global; dashboard 2 tarjetas alerta |
+| H | Portal cliente | — Siguiente — | Subdomain o path /portal; login sin MFA; solo ve embarques de su empresa; documentos con visible_to_customer=true; sin costos ni notas internas |
 | H | Reportes básicos | — | — |
 
 ### Patrones establecidos (reutilizar en fases siguientes)
@@ -195,6 +196,7 @@ campos aduanales: si dudas, deja el campo opcional y márcalo en docs/PREGUNTAS_
 - Dialog component: en `ui.tsx`; Escape + click-fuera cierran; portal centrado con overlay; `open` guarda en state del componente padre
 - SendEmailTrigger: `src/components/send-email-trigger.tsx`; abre Dialog con form email/asunto/cuerpo; native `<button form="...">` en footer (Button component no acepta prop `form`)
 - FileDropZone: `src/components/file-drop-zone.tsx`; valida MIME + tamaño client-side; `formRef.current?.requestSubmit()` al seleccionar archivo; progressive enhancement (funciona sin drag)
+- Almacenaje con terceros: `storage_stays` (estadías) + `storage_stay_costs` (1:1, can_see_costs); lógica pura en `src/lib/storage-math.ts` (`calcStay`, `calcStayCost`) con Vitest usando UTC methods (`getUTCFullYear/Month/Date`) para evitar bug de timezone; idempotencia via `charge_id` FK (ON DELETE SET NULL); `createChargeFromStay` server-side calcula con calcStay() antes de INSERT; Supabase nested joins tipados con `as unknown as T` para bypassear inferencia de arrays; constraints BD: `ss_out_after_in`, `ss_released_has_out`
 
 ## Definición de terminado (cada tarea)
 Compila sin errores · lint sin errores · RLS probada · T1 y T7 sin hallazgos críticos ni altos ·

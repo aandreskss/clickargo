@@ -141,6 +141,15 @@ export const MSG = {
   pdf_error:                  "No se pudo generar el PDF.",
   // plantillas de documentos
   plantilla_guardada:         "Plantilla de documento actualizada.",
+  visibilidad_actualizada:    "Visibilidad del documento actualizada.",
+  // almacenaje con terceros
+  entrada_registrada:        "Entrada de almacenaje registrada.",
+  salida_registrada:         "Salida de almacenaje registrada.",
+  cargo_ya_creado:           "El cargo de esta estadía ya fue creado.",
+  cargo_almacenaje_creado:   "Cargo de almacenaje creado.",
+  almacenaje_eliminado:      "Estadía de almacenaje eliminada.",
+  almacenaje_bloqueado:      "No se puede eliminar una estadía que ya tiene cargo creado.",
+  fecha_salida_invalida:     "La fecha de salida no puede ser anterior a la fecha de entrada.",
   // genérico
   sin_permiso_ajustes:           "Solo dueño o administrador puede acceder a los ajustes.",
   error_generico:                "No se pudo completar la acción. Inténtalo de nuevo.",

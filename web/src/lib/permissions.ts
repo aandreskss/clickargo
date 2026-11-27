@@ -4,7 +4,7 @@ export type Role =
 
 export type Module =
   | "quotes" | "shipments" | "masters" | "accounts"
-  | "settings" | "reports" | "charges" | "pre_invoices" | "documents";
+  | "settings" | "reports" | "charges" | "pre_invoices" | "documents" | "storage";
 
 export type Action =
   | "view" | "create" | "edit" | "delete"
@@ -24,7 +24,8 @@ const P: Record<Role, Matrix> = {
     reports:      ["view"],
     charges:      ["view","create","edit","delete","view_costs","export"],
     pre_invoices: ["view","create","edit","delete","export"],
-    documents:    ["view","upload","delete","send_email"],
+    documents:    ["view","upload","edit","delete","send_email"],
+    storage:      ["view","create","edit","delete"],
   },
   admin: {
     quotes:       ["view","create","edit","delete","view_costs"],
@@ -35,7 +36,8 @@ const P: Record<Role, Matrix> = {
     reports:      ["view"],
     charges:      ["view","create","edit","delete","view_costs","export"],
     pre_invoices: ["view","create","edit","delete","export"],
-    documents:    ["view","upload","delete","send_email"],
+    documents:    ["view","upload","edit","delete","send_email"],
+    storage:      ["view","create","edit","delete"],
   },
   manager: {
     quotes:       ["view","create","edit","delete"],
@@ -46,7 +48,8 @@ const P: Record<Role, Matrix> = {
     reports:      ["view"],
     charges:      ["view","create","edit","delete"],
     pre_invoices: ["view"],
-    documents:    ["view","upload","delete","send_email"],
+    documents:    ["view","upload","edit","delete","send_email"],
+    storage:      ["view","create","edit","delete"],
   },
   operator: {
     quotes:       ["view","create","edit"],
@@ -58,6 +61,7 @@ const P: Record<Role, Matrix> = {
     charges:      ["view","create","edit"],
     pre_invoices: ["view"],
     documents:    ["view","upload"],
+    storage:      ["view","create","edit"],
   },
   finance: {
     quotes:       ["view","view_costs"],
@@ -69,6 +73,7 @@ const P: Record<Role, Matrix> = {
     charges:      ["view","create","edit","delete","view_costs","export"],
     pre_invoices: ["view","create","edit","export"],
     documents:    ["view","send_email"],
+    storage:      ["view"],
   },
   sales: {
     quotes:       ["view","create","edit"],
@@ -80,6 +85,7 @@ const P: Record<Role, Matrix> = {
     charges:      ["view"],
     pre_invoices: ["view"],
     documents:    ["view","upload","send_email"],
+    storage:      ["view"],
   },
   customs_broker: {
     quotes:       ["view"],
@@ -91,6 +97,7 @@ const P: Record<Role, Matrix> = {
     charges:      ["view"],
     pre_invoices: [],
     documents:    ["view","upload"],
+    storage:      ["view"],
   },
   viewer: {
     quotes:       ["view"],
@@ -102,6 +109,7 @@ const P: Record<Role, Matrix> = {
     charges:      ["view"],
     pre_invoices: ["view"],
     documents:    ["view"],
+    storage:      ["view"],
   },
 };
 

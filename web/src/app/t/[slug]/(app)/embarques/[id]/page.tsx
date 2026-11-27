@@ -5,7 +5,7 @@ import {
 } from "@/components/ui";
 import {
   STAGE_LABELS, STAGE_BADGE_COLORS, SHIPMENT_MODES, SHIPMENT_DIRECTIONS,
-  SHIPMENT_FIELD_LABELS, type BadgeColor,
+  SHIPMENT_FIELD_LABELS, DOCUMENT_KIND_OPTIONS, type BadgeColor,
 } from "@/lib/field-packs";
 import { decode } from "@/lib/messages";
 import { createClient } from "@/lib/supabase/server";
@@ -14,8 +14,11 @@ import { validateISO6346 } from "@/lib/container-validation";
 import { advanceStage, cancelShipment } from "@/app/actions/shipments";
 import { assignMasterToShipment } from "@/app/actions/masters";
 import { createCharge, deleteCharge, importFromQuote } from "@/app/actions/charges";
+import { can } from "@/lib/permissions";
 import { createPreInvoice } from "@/app/actions/pre-invoices";
-import { uploadShipmentDocument, deleteShipmentDocument, sendArrivalNoticePdf } from "@/app/actions/documents";
+import { uploadShipmentDocument, deleteShipmentDocument, sendArrivalNoticePdf, toggleDocumentVisibility } from "@/app/actions/documents";
+import { createStorageStay, releaseStorageStay, createChargeFromStay, deleteStorageStay } from "@/app/actions/storage";
+import { calcStay } from "@/lib/storage-math";
 import { SendEmailTrigger } from "@/components/send-email-trigger";
 import { FileDropZone } from "@/components/file-drop-zone";
 import CargoForm from "./cargo-form";
@@ -155,6 +158,13 @@ export default async function FichaEmbarque({
       : Promise.resolve({ data: null }),
   ]);
 
+  // Datos del tab Almacenaje
+  const { data: storageStays } = await supabase
+    .from("storage_stays")
+    .select("id, in_date, out_date, free_days, sell_rate_per_day, currency, status, charge_id, location_note, notes, provider:accounts!provider_account_id(id, name), cost:storage_stay_costs(cost_rate_per_day, vendor_invoice_ref)")
+    .eq("shipment_id", id)
+    .order("in_date");
+
   const accountName = (aid: string | null | undefined) =>
     relatedAccounts?.find((a) => a.id === aid)?.name ?? "—";
   const portName = (code: string | null | undefined) => {
@@ -194,11 +204,12 @@ export default async function FichaEmbarque({
     { value: "resumen",    label: "Resumen",             href: `${baseUrl}?tab=resumen`    },
     { value: "carga",      label: "Carga y contenedores", href: `${baseUrl}?tab=carga`      },
     { value: "cargos",     label: "Cargos",              href: `${baseUrl}?tab=cargos`     },
+    { value: "almacenaje", label: "Almacenaje",          href: `${baseUrl}?tab=almacenaje` },
     { value: "documentos", label: "Documentos",          href: `${baseUrl}?tab=documentos` },
     { value: "historial",  label: "Historial",           href: `${baseUrl}?tab=historial`  },
     { value: "tracking",   label: "Tracking",            href: `${baseUrl}?tab=tracking`   },
   ];
-  const activeTab = ["resumen","carga","cargos","documentos","historial","tracking"].includes(tab) ? tab : "resumen";
+  const activeTab = ["resumen","carga","cargos","almacenaje","documentos","historial","tracking"].includes(tab) ? tab : "resumen";
 
   // Helpers para tab Cargos
   const fmtMoney = (n: number, cur = "USD") =>
@@ -208,7 +219,7 @@ export default async function FichaEmbarque({
   const costOf = (chargeId: string) =>
     chargeCosts?.find((c) => c.shipment_charge_id === chargeId);
   const unitLabel: Record<string, string> = {
-    container: "Contenedor", kg: "Kg", cbm: "CBM", unit: "Unidad", flat: "Global",
+    container: "Contenedor", kg: "Kg", cbm: "CBM", unit: "Unidad", flat: "Global", day: "Día",
   };
 
   const eventCodeLabel: Record<string, string> = {
@@ -821,12 +832,242 @@ export default async function FichaEmbarque({
         </div>
       )}
 
+      {/* ── Tab: Almacenaje ── */}
+      {activeTab === "almacenaje" && (() => {
+        const fmtDate = (d: string) =>
+          new Date(d + "T00:00:00").toLocaleDateString("es-DO", { day: "2-digit", month: "short", year: "numeric" });
+        const canManage = can(membership?.role as Parameters<typeof can>[0], "storage", "create");
+        const canDelete = can(membership?.role as Parameters<typeof can>[0], "storage", "delete");
+
+        // Calcular totales del resumen
+        const openStays  = (storageStays ?? []).filter((s) => s.status === "stored");
+        const totalSell  = (storageStays ?? []).reduce((acc, s) => {
+          const c = calcStay(new Date(s.in_date + "T00:00:00"), s.out_date ? new Date(s.out_date + "T00:00:00") : null, s.free_days, s.sell_rate_per_day);
+          return acc + c.sellTotal;
+        }, 0);
+
+        return (
+          <div className="space-y-4">
+            {/* Formulario registrar entrada */}
+            {canManage && !isTerminal && (
+              <Card>
+                <h2 className="mb-3 font-semibold text-[var(--color-text)]">Registrar entrada</h2>
+                <form action={createStorageStay} className="space-y-3">
+                  <input type="hidden" name="shipment_id" value={id} />
+                  <div className="flex flex-wrap gap-3">
+                    <label className="min-w-36 flex-1 block">
+                      <span className="mb-1 block text-sm font-medium text-[var(--color-text)]">Fecha de entrada</span>
+                      <input
+                        type="date" name="in_date" required
+                        defaultValue={new Date().toISOString().slice(0, 10)}
+                        className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-base text-[var(--color-text)] outline-none focus:border-[var(--color-border-focus)] focus:ring-2 focus:ring-[var(--color-border-focus)]/20"
+                      />
+                    </label>
+                    <label className="min-w-48 flex-1 block">
+                      <span className="mb-1 block text-sm font-medium text-[var(--color-text)]">Proveedor / Bodega</span>
+                      <select
+                        name="provider_account_id"
+                        className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-base text-[var(--color-text)] outline-none focus:border-[var(--color-border-focus)] focus:ring-2 focus:ring-[var(--color-border-focus)]/20"
+                      >
+                        <option value="">— Sin proveedor —</option>
+                        {(allAccounts ?? []).map((a) => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="min-w-48 flex-1 block">
+                      <span className="mb-1 block text-sm font-medium text-[var(--color-text)]">Ubicación / nota</span>
+                      <input
+                        type="text" name="location_note" maxLength={300}
+                        placeholder="Ej. Bodega 3, zona norte"
+                        className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-base text-[var(--color-text)] outline-none focus:border-[var(--color-border-focus)] focus:ring-2 focus:ring-[var(--color-border-focus)]/20"
+                      />
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <label className="min-w-28 flex-1 block">
+                      <span className="mb-1 block text-sm font-medium text-[var(--color-text)]">Días libres</span>
+                      <input
+                        type="number" name="free_days" min="0" defaultValue="0"
+                        className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-base text-[var(--color-text)] outline-none focus:border-[var(--color-border-focus)] focus:ring-2 focus:ring-[var(--color-border-focus)]/20"
+                      />
+                    </label>
+                    <label className="min-w-36 flex-1 block">
+                      <span className="mb-1 block text-sm font-medium text-[var(--color-text)]">Tarifa de venta / día</span>
+                      <input
+                        type="number" name="sell_rate_per_day" min="0" step="0.01" defaultValue="0"
+                        className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-base text-[var(--color-text)] outline-none focus:border-[var(--color-border-focus)] focus:ring-2 focus:ring-[var(--color-border-focus)]/20"
+                      />
+                    </label>
+                    <label className="min-w-24 flex-[0_0_auto] block">
+                      <span className="mb-1 block text-sm font-medium text-[var(--color-text)]">Moneda</span>
+                      <select
+                        name="currency" defaultValue="USD"
+                        className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-base text-[var(--color-text)] outline-none focus:border-[var(--color-border-focus)] focus:ring-2 focus:ring-[var(--color-border-focus)]/20"
+                      >
+                        <option value="USD">USD</option>
+                        <option value="DOP">DOP</option>
+                        <option value="EUR">EUR</option>
+                      </select>
+                    </label>
+                    {canSeeCosts && (
+                      <label className="min-w-36 flex-1 block">
+                        <span className="mb-1 block text-sm font-medium text-[var(--color-text)]">Tarifa de costo / día</span>
+                        <input
+                          type="number" name="cost_rate_per_day" min="0" step="0.01" defaultValue="0"
+                          className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-base text-[var(--color-text)] outline-none focus:border-[var(--color-border-focus)] focus:ring-2 focus:ring-[var(--color-border-focus)]/20"
+                        />
+                      </label>
+                    )}
+                  </div>
+                  <Button type="submit">Registrar entrada</Button>
+                </form>
+              </Card>
+            )}
+
+            {/* Tabla de estadías */}
+            {(storageStays ?? []).length === 0 ? (
+              <Card>
+                <EmptyState
+                  title="Sin estadías de almacenaje"
+                  description="Registra la entrada cuando el embarque ingrese a una bodega de terceros."
+                />
+              </Card>
+            ) : (
+              <Card className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="border-b border-[var(--color-border)]">
+                      <tr>
+                        <th className="p-3 font-semibold">Proveedor / Bodega</th>
+                        <th className="p-3 font-semibold">Entrada</th>
+                        <th className="p-3 font-semibold">Salida</th>
+                        <th className="p-3 font-semibold text-right">Días libres</th>
+                        <th className="p-3 font-semibold text-right">Almacenados</th>
+                        <th className="p-3 font-semibold text-right">Cobrables</th>
+                        <th className="p-3 font-semibold text-right">Cargo venta</th>
+                        {canSeeCosts && <th className="p-3 font-semibold text-right">Costo</th>}
+                        <th className="p-3 font-semibold">Estado</th>
+                        <th className="p-3 font-semibold">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(storageStays ?? []).map((s) => {
+                        const provider = (s.provider as unknown) as { id: string; name: string } | null;
+                        const cost     = (Array.isArray(s.cost) ? s.cost[0] : s.cost) as { cost_rate_per_day: number } | null | undefined;
+                        const calc     = calcStay(
+                          new Date(s.in_date + "T00:00:00"),
+                          s.out_date ? new Date(s.out_date + "T00:00:00") : null,
+                          s.free_days,
+                          s.sell_rate_per_day,
+                        );
+                        const costTotal = canSeeCosts && cost
+                          ? calc.billableDays * cost.cost_rate_per_day
+                          : null;
+                        return (
+                          <tr key={s.id} className="border-b border-[var(--color-border)] last:border-0">
+                            <td className="p-3">
+                              {provider?.name ?? "—"}
+                              {s.location_note && (
+                                <span className="block text-xs text-[var(--color-text-muted)]">{s.location_note}</span>
+                              )}
+                            </td>
+                            <td className="p-3 tabular-nums">{fmtDate(s.in_date)}</td>
+                            <td className="p-3 tabular-nums">
+                              {s.out_date ? fmtDate(s.out_date) : <span className="text-[var(--color-text-muted)]">En bodega</span>}
+                            </td>
+                            <td className="p-3 text-right tabular-nums">{s.free_days}</td>
+                            <td className="p-3 text-right tabular-nums">{calc.storedDays}</td>
+                            <td className="p-3 text-right tabular-nums font-medium">{calc.billableDays}</td>
+                            <td className="p-3 text-right tabular-nums">
+                              {fmtMoney(calc.sellTotal, s.currency)}
+                              {s.status === "stored" && <span className="text-xs text-[var(--color-text-muted)]">+</span>}
+                            </td>
+                            {canSeeCosts && (
+                              <td className="p-3 text-right tabular-nums">
+                                {costTotal != null ? fmtMoney(Math.round(costTotal * 100) / 100, s.currency) : "—"}
+                              </td>
+                            )}
+                            <td className="p-3">
+                              <Badge color={s.status === "stored" ? "success" : "default"}>
+                                {s.status === "stored" ? "Almacenado" : "Liberado"}
+                              </Badge>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex flex-wrap gap-2">
+                                {/* Registrar salida */}
+                                {s.status === "stored" && canManage && !isTerminal && (
+                                  <form action={releaseStorageStay} className="flex items-end gap-2">
+                                    <input type="hidden" name="id"          value={s.id} />
+                                    <input type="hidden" name="shipment_id" value={id} />
+                                    <input
+                                      type="date" name="out_date" required
+                                      defaultValue={new Date().toISOString().slice(0, 10)}
+                                      className="rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-border-focus)]"
+                                    />
+                                    <button type="submit" className="text-sm font-medium text-[var(--color-primary)] hover:underline whitespace-nowrap">
+                                      Registrar salida
+                                    </button>
+                                  </form>
+                                )}
+                                {/* Crear cargo */}
+                                {s.status === "released" && !s.charge_id && (
+                                  <form action={createChargeFromStay}>
+                                    <input type="hidden" name="stay_id"     value={s.id} />
+                                    <input type="hidden" name="shipment_id" value={id} />
+                                    <button type="submit" className="text-sm font-medium text-[var(--color-primary)] hover:underline whitespace-nowrap">
+                                      Crear cargo
+                                    </button>
+                                  </form>
+                                )}
+                                {s.status === "released" && s.charge_id && (
+                                  <span className="text-sm text-[var(--color-success-text)]">Cargo creado ✓</span>
+                                )}
+                                {/* Eliminar */}
+                                {canDelete && !s.charge_id && (
+                                  <form action={deleteStorageStay}>
+                                    <input type="hidden" name="id"          value={s.id} />
+                                    <input type="hidden" name="shipment_id" value={id} />
+                                    <button type="submit" className="text-sm text-[var(--color-danger)] hover:underline">
+                                      Eliminar
+                                    </button>
+                                  </form>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Resumen */}
+                <div className="flex flex-wrap gap-6 border-t border-[var(--color-border)] px-4 py-3 text-sm text-[var(--color-text-muted)]">
+                  <span>
+                    <strong className="text-[var(--color-text)]">{openStays.length}</strong> estadía{openStays.length !== 1 ? "s" : ""} activa{openStays.length !== 1 ? "s" : ""}
+                  </span>
+                  <span>
+                    Cargo acumulado:{" "}
+                    <strong className="text-[var(--color-text)]">{fmtMoney(totalSell)}</strong>
+                  </span>
+                </div>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── Tab: Documentos ── */}
       {activeTab === "documentos" && (
         <div className="space-y-4">
           <Card>
             <h2 className="mb-3 font-semibold text-[var(--color-text)]">Subir documento</h2>
-            <FileDropZone action={uploadShipmentDocument} shipmentId={id} />
+            <FileDropZone
+              action={uploadShipmentDocument}
+              shipmentId={id}
+              kindOptions={DOCUMENT_KIND_OPTIONS}
+              defaultKind="other"
+            />
           </Card>
 
           {(shipmentDocs ?? []).length === 0 ? (
@@ -838,38 +1079,68 @@ export default async function FichaEmbarque({
             </Card>
           ) : (
             <Card className="p-0">
-              <Table cols={["Nombre", "Tipo", "Tamaño", "Fecha", ""]}>
-                {(shipmentDocs ?? []).map((doc) => (
-                  <Tr key={doc.id}>
-                    <Td>
-                      <a
-                        href={`/api/documentos/archivos/${doc.id}`}
-                        className="text-[var(--color-primary)] hover:underline"
-                        download
-                      >
-                        {doc.title}
-                      </a>
-                    </Td>
-                    <Td>{doc.kind}</Td>
-                    <Td>{doc.size_bytes < 1024 * 1024
-                      ? `${(doc.size_bytes / 1024).toFixed(0)} KB`
-                      : `${(doc.size_bytes / (1024 * 1024)).toFixed(1)} MB`}
-                    </Td>
-                    <Td>{new Date(doc.created_at).toLocaleDateString("es-DO")}</Td>
-                    <Td>
-                      <form action={deleteShipmentDocument}>
-                        <input type="hidden" name="id" value={doc.id} />
-                        <input type="hidden" name="shipment_id" value={id} />
-                        <button
-                          type="submit"
-                          className="text-sm text-[var(--color-danger)] hover:underline"
+              <Table cols={["Nombre", "Tipo", "Tamaño", "Fecha", "Portal", ""]}>
+                {(shipmentDocs ?? []).map((doc) => {
+                  const kindLabel = DOCUMENT_KIND_OPTIONS.find((k) => k.value === doc.kind)?.label ?? doc.kind;
+                  const canEdit   = can(membership?.role as Parameters<typeof can>[0], "documents", "edit");
+                  return (
+                    <Tr key={doc.id}>
+                      <Td>
+                        <a
+                          href={`/api/documentos/archivos/${doc.id}`}
+                          className="text-[var(--color-primary)] hover:underline"
+                          download
                         >
-                          Eliminar
-                        </button>
-                      </form>
-                    </Td>
-                  </Tr>
-                ))}
+                          {doc.title}
+                        </a>
+                      </Td>
+                      <Td>{kindLabel}</Td>
+                      <Td className="tabular-nums">
+                        {doc.size_bytes < 1024 * 1024
+                          ? `${(doc.size_bytes / 1024).toFixed(0)} KB`
+                          : `${(doc.size_bytes / (1024 * 1024)).toFixed(1)} MB`}
+                      </Td>
+                      <Td>{new Date(doc.created_at).toLocaleDateString("es-DO")}</Td>
+                      <Td>
+                        {canEdit ? (
+                          <form action={toggleDocumentVisibility}>
+                            <input type="hidden" name="id"          value={doc.id} />
+                            <input type="hidden" name="shipment_id" value={id} />
+                            <input type="hidden" name="visible"     value={doc.visible_to_customer ? "false" : "true"} />
+                            <button
+                              type="submit"
+                              className={[
+                                "text-sm font-medium transition hover:underline",
+                                doc.visible_to_customer
+                                  ? "text-[var(--color-success-text)]"
+                                  : "text-[var(--color-text-muted)]",
+                              ].join(" ")}
+                              title={doc.visible_to_customer ? "Visible en portal del cliente. Click para ocultar." : "Oculto en portal. Click para mostrar."}
+                            >
+                              {doc.visible_to_customer ? "Visible" : "Oculto"}
+                            </button>
+                          </form>
+                        ) : (
+                          <span className={doc.visible_to_customer ? "text-sm text-[var(--color-success-text)]" : "text-sm text-[var(--color-text-muted)]"}>
+                            {doc.visible_to_customer ? "Visible" : "Oculto"}
+                          </span>
+                        )}
+                      </Td>
+                      <Td>
+                        <form action={deleteShipmentDocument}>
+                          <input type="hidden" name="id" value={doc.id} />
+                          <input type="hidden" name="shipment_id" value={id} />
+                          <button
+                            type="submit"
+                            className="text-sm text-[var(--color-danger)] hover:underline"
+                          >
+                            Eliminar
+                          </button>
+                        </form>
+                      </Td>
+                    </Tr>
+                  );
+                })}
               </Table>
             </Card>
           )}

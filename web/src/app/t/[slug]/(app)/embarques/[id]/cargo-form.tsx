@@ -13,6 +13,7 @@ const UNIT_LABELS: Record<ChargeUnit, string> = {
   cbm:       "CBM",
   unit:      "Unidad",
   flat:      "Global",
+  day:       "Día",
 };
 
 export default function CargoForm({

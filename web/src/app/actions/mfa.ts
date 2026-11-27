@@ -4,38 +4,43 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { errUrl } from "@/lib/messages";
 
+function tenantBase(formData: FormData): string {
+  const base = String(formData.get("base") ?? "");
+  return /^\/t\/[a-z0-9-]+$/.test(base) ? base : "";
+}
+
 export async function enrollTotp(formData: FormData) {
+  const base = tenantBase(formData);
+  const setupPage = base ? `${base}/mfa-setup` : "/mfa-setup";
   const supabase = await createClient();
   const friendlyName = String(formData.get("friendly_name") ?? "Autenticador");
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: "totp",
     friendlyName,
   });
-  if (error) redirect(errUrl("/mfa-setup", "error_generico"));
-  // La página de setup lee el QR de los searchParams (totp_uri codificado).
+  if (error) redirect(errUrl(setupPage, "error_generico"));
   const uri = encodeURIComponent(data.totp.uri);
-  redirect(`/mfa-setup?uri=${uri}&factorId=${data.id}`);
+  redirect(`${setupPage}?uri=${uri}&factorId=${data.id}&base=${encodeURIComponent(base)}`);
 }
 
 export async function verifyTotp(formData: FormData) {
+  const base = tenantBase(formData);
+  const verifyPage = base ? `${base}/mfa-verify` : "/mfa-verify";
   const supabase = await createClient();
   const factorId = String(formData.get("factorId") ?? "");
   const code = String(formData.get("code") ?? "").replace(/\s/g, "");
 
-  // Paso 1: challenge
   const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
-  if (challengeError) redirect(errUrl("/mfa-verify", "error_generico"));
+  if (challengeError) redirect(errUrl(verifyPage, "error_generico"));
 
-  // Paso 2: verify
   const { error: verifyError } = await supabase.auth.mfa.verify({
     factorId,
     challengeId: challengeData.id,
     code,
   });
-  if (verifyError) redirect(errUrl("/mfa-verify?factorId=" + factorId, "error_generico"));
+  if (verifyError) redirect(errUrl(`${verifyPage}?factorId=${factorId}`, "error_generico"));
 
-  // Redirigir al inicio de la empresa (el layout leerá el slug del host).
-  redirect("/");
+  redirect(base ? `${base}/` : "/");
 }
 
 export async function enrollTotpAdmin(formData: FormData) {

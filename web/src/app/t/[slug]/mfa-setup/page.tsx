@@ -5,10 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function MfaSetup({ params, searchParams }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string; uri?: string; factorId?: string }>;
+  searchParams: Promise<{ error?: string; uri?: string; factorId?: string; base?: string }>;
 }) {
   const { slug } = await params;
-  const { error, uri, factorId } = await searchParams;
+  const { error, uri, factorId, base: baseParam } = await searchParams;
+  const base = /^\/t\/[a-z0-9-]+$/.test(baseParam ?? "") ? baseParam! : `/t/${slug}`;
   const errorMsg = decode(error);
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -31,6 +32,7 @@ export default async function MfaSetup({ params, searchParams }: {
           <img src={qrUrl} alt="Código QR para autenticación TOTP" className="mx-auto mb-4 rounded" width={200} height={200} />
           <form action={verifyTotp} className="space-y-4">
             <input type="hidden" name="factorId" value={factorId} />
+            <input type="hidden" name="base" value={base} />
             <Field label="Código de 6 dígitos" name="code" placeholder="123456" inputMode="numeric" pattern="[0-9 ]{6,8}" />
             <Button>Verificar y activar</Button>
           </form>
@@ -48,7 +50,7 @@ export default async function MfaSetup({ params, searchParams }: {
         </p>
         <Notice error={errorMsg} />
         <form action={enrollTotp} className="space-y-4">
-          <input type="hidden" name="slug" value={slug} />
+          <input type="hidden" name="base" value={base} />
           <Field label="Nombre del dispositivo" name="friendly_name" defaultValue="Mi teléfono" />
           <Button>Continuar</Button>
         </form>

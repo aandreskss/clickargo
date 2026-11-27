@@ -7,7 +7,8 @@ export default async function MfaVerify({ params, searchParams }: {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ error?: string; factorId?: string }>;
 }) {
-  await params;
+  const { slug } = await params;
+  const base = `/t/${slug}`;
   const { error, factorId: paramFactorId } = await searchParams;
   const errorMsg = decode(error);
   const supabase = await createClient();
@@ -27,6 +28,7 @@ export default async function MfaVerify({ params, searchParams }: {
         <form action={verifyTotp} className="space-y-4">
           <Notice error={errorMsg} />
           <input type="hidden" name="factorId" value={factorId} />
+          <input type="hidden" name="base" value={base} />
           <Field label="Código de 6 dígitos" name="code" placeholder="123456" inputMode="numeric" pattern="[0-9 ]{6,8}" />
           <Button>Verificar</Button>
         </form>

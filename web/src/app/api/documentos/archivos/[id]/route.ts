@@ -1,6 +1,6 @@
-import { createClient }     from "@/lib/supabase/server";
-import { tenantFromHost }   from "@/lib/tenant";
-import { getSignedDownloadUrl } from "@/lib/documents/storage";
+import { createClient }          from "@/lib/supabase/server";
+import { tenantFromHost }         from "@/lib/tenant";
+import { getSignedDownloadUrl }   from "@/lib/documents/storage";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
@@ -41,7 +41,28 @@ export async function GET(
   const signedUrl = await getSignedDownloadUrl(doc.storage_path, supabase, tenant.id);
   if (!signedUrl) return Response.json({ error: "no se pudo generar la URL de descarga" }, { status: 500 });
 
+  // Proxy: descarga desde Storage y reenvía con headers de seguridad propios.
+  // Evita exponer la URL firmada al cliente y garantiza Content-Disposition correcto.
+  let upstream: Response;
+  try {
+    upstream = await fetch(signedUrl);
+  } catch {
+    return Response.json({ error: "error al obtener el archivo" }, { status: 502 });
+  }
+
+  if (!upstream.ok) {
+    return Response.json({ error: "archivo no disponible" }, { status: 502 });
+  }
+
   const safeTitle = encodeURIComponent(doc.title.replace(/[^\w\s.-]/g, "_"));
 
-  return Response.redirect(signedUrl, 302);
+  return new Response(upstream.body, {
+    status: 200,
+    headers: {
+      "Content-Type":           doc.mime_type,
+      "Content-Disposition":    `attachment; filename*=UTF-8''${safeTitle}`,
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control":          "no-store",
+    },
+  });
 }

@@ -153,6 +153,15 @@ export function serviceToModeDirection(
   }
 }
 
+export const DOCUMENT_KIND_OPTIONS = [
+  { value: "bl",                  label: "Bill of Lading / AWB"  },
+  { value: "commercial_invoice",  label: "Factura comercial"     },
+  { value: "packing_list",        label: "Packing list"          },
+  { value: "customs_declaration", label: "Declaración aduanera"  },
+  { value: "arrival_notice",      label: "Aviso de llegada"      },
+  { value: "other",               label: "Otro"                  },
+] as const;
+
 export const QUOTE_STATUSES_WITH_CONVERTED = [
   ...([
     { value: "draft",     label: "Borrador",    color: "default" as const },

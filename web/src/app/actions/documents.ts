@@ -381,6 +381,42 @@ export async function sendPreInvoicePdf(formData: FormData) {
   redirect(okUrl(back, "correo_enviado"));
 }
 
+// ── Actualizar visibilidad de documento para el portal ───────────────────────
+
+export async function toggleDocumentVisibility(formData: FormData) {
+  const docId      = str(formData, "id");
+  const shipmentId = str(formData, "shipment_id");
+  const visible    = formData.get("visible") === "true";
+  const back       = `/embarques/${shipmentId}?tab=documentos`;
+
+  if (!UUID_RE.test(docId) || !UUID_RE.test(shipmentId)) redirect(errUrl(back, "id_invalido"));
+
+  const tenant   = await tenantFromHost();
+  if (!tenant) redirect(errUrl(back, "error_generico"));
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect(errUrl(back, "error_generico"));
+
+  const { data: membership } = await supabase
+    .from("memberships").select("role")
+    .eq("tenant_id", tenant.id).eq("user_id", user.id).maybeSingle();
+  if (!membership || !can(membership.role as Role, "documents", "edit")) {
+    redirect(errUrl(back, "sin_permiso_editar"));
+  }
+
+  const { error } = await supabase
+    .from("shipment_documents")
+    .update({ visible_to_customer: visible })
+    .eq("id", docId)
+    .eq("tenant_id", tenant.id);
+
+  if (error) redirect(errUrl(back, "error_generico"));
+
+  revalidatePath(back);
+  redirect(okUrl(back, "visibilidad_actualizada"));
+}
+
 // ── Actualizar plantilla de documento ─────────────────────────────────────────
 
 const TemplateConfigSchema = z.object({

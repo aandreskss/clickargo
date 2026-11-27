@@ -78,16 +78,16 @@ export default async function AppLayout({ children, params }: { children: React.
       <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-5">
-            <Link href="/" className="font-bold text-[var(--color-text)]">{tenant.name}</Link>
+            <Link href={`/t/${slug}`} className="font-bold text-[var(--color-text)]">{tenant.name}</Link>
             <nav className="flex gap-4 text-sm font-medium text-[var(--color-text-muted)]">
-              <Link href="/" className="hover:text-[var(--color-text)]">Inicio</Link>
-              <Link href="/clientes" className="hover:text-[var(--color-text)]">Clientes</Link>
-              <Link href="/cotizaciones" className="hover:text-[var(--color-text)]">Cotizaciones</Link>
-              <Link href="/embarques" className="hover:text-[var(--color-text)]">Embarques</Link>
-              <Link href="/masters" className="hover:text-[var(--color-text)]">Masters</Link>
-              <Link href="/almacenaje" className="hover:text-[var(--color-text)]">Almacenaje</Link>
+              <Link href={`/t/${slug}`} className="hover:text-[var(--color-text)]">Inicio</Link>
+              <Link href={`/t/${slug}/clientes`} className="hover:text-[var(--color-text)]">Clientes</Link>
+              <Link href={`/t/${slug}/cotizaciones`} className="hover:text-[var(--color-text)]">Cotizaciones</Link>
+              <Link href={`/t/${slug}/embarques`} className="hover:text-[var(--color-text)]">Embarques</Link>
+              <Link href={`/t/${slug}/masters`} className="hover:text-[var(--color-text)]">Masters</Link>
+              <Link href={`/t/${slug}/almacenaje`} className="hover:text-[var(--color-text)]">Almacenaje</Link>
               {(m.role === "owner" || m.role === "admin") && (
-                <Link href="/ajustes/empresa" className="hover:text-[var(--color-text)]">Ajustes</Link>
+                <Link href={`/t/${slug}/ajustes/empresa`} className="hover:text-[var(--color-text)]">Ajustes</Link>
               )}
             </nav>
           </div>

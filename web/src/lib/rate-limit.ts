@@ -40,6 +40,11 @@ export const publicTrackingLimiter = redis
   ? new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(20, "1 m"), prefix: "rl:tracking" })
   : null;
 
+// 20 exportaciones de reportes por usuario por minuto (Fase I).
+export const reportsLimiter = redis
+  ? new Ratelimit({ redis, limiter: Ratelimit.fixedWindow(20, "60 s"), prefix: "rl:reports" })
+  : null;
+
 /** Verifica el límite. Devuelve true si puede continuar, false si debe bloquearse. */
 export async function checkLimit(
   limiter: Ratelimit | null,

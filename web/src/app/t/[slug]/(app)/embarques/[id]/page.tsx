@@ -152,7 +152,7 @@ export default async function FichaEmbarque({
           .select("shipment_charge_id, vendor_account_id, unit_cost, currency")
           .in("shipment_charge_id", (await supabase.from("shipment_charges").select("id").eq("shipment_id", id)).data?.map((c) => c.id) ?? [])
       : Promise.resolve({ data: null }),
-    supabase.from("charge_types").select("code, name, default_unit"),
+    supabase.from("charge_types").select("code, name, default_unit, itbis_aplica"),
     supabase.from("accounts").select("id, name").eq("tenant_id", tenant.id).limit(200),
     canSeeCosts
       ? supabase.from("shipment_margin").select("currency, venta, costo, margen, margen_pct").eq("shipment_id", id)
@@ -860,9 +860,10 @@ export default async function FichaEmbarque({
                 shipmentId={id}
                 accountId={ship.account_id}
                 chargeTypes={(chargeTypes ?? []).map((ct) => ({
-                  code: ct.code,
-                  name: ct.name,
+                  code:         ct.code,
+                  name:         ct.name,
                   default_unit: ct.default_unit,
+                  itbis_aplica: ct.itbis_aplica ?? false,
                 }))}
                 accounts={(allAccounts ?? []).map((a) => ({ id: a.id, name: a.name }))}
                 action={createCharge}

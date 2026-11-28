@@ -7,14 +7,11 @@ import { tenantFromHost } from "@/lib/tenant";
 import {
   UpdateTenantSchema,
   UpdateCounterSchema,
-  CreateChargeTypeSchema,
-  UpdateChargeTypeSchema,
 } from "@/lib/schemas/settings.schema";
 import { errUrl, okUrl } from "@/lib/messages";
 
 const BASE_EMP = "/ajustes/empresa";
 const BASE_NUM = "/ajustes/numeracion";
-const BASE_CAR = "/ajustes/cargos";
 
 const str  = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
@@ -138,93 +135,4 @@ export async function updateCounter(formData: FormData) {
 
   revalidatePath(BASE_NUM);
   redirect(okUrl(BASE_NUM, "contador_actualizado"));
-}
-
-// ── Crear tipo de cargo ───────────────────────────────────────────────────────
-export async function createChargeType(formData: FormData) {
-  const parsed = CreateChargeTypeSchema.safeParse({
-    code:         str(formData, "code"),
-    name:         str(formData, "name"),
-    default_unit: str(formData, "default_unit"),
-    taxable:      formData.get("taxable") === "true",
-  });
-  if (!parsed.success) redirect(errUrl(BASE_CAR, "error_generico"));
-
-  const supabase = await createClient();
-  const tenant   = await tenantFromHost();
-
-  const { error } = await supabase.from("charge_types").insert({
-    tenant_id:    tenant.id,
-    code:         parsed.data.code,
-    name:         parsed.data.name,
-    default_unit: parsed.data.default_unit || null,
-    taxable:      parsed.data.taxable,
-  });
-
-  if (error?.code === "23505") redirect(errUrl(BASE_CAR, "error_generico"));
-  if (error) redirect(errUrl(BASE_CAR, "error_generico"));
-
-  revalidatePath(BASE_CAR);
-  redirect(okUrl(BASE_CAR, "cargo_guardado"));
-}
-
-// ── Actualizar tipo de cargo ──────────────────────────────────────────────────
-export async function updateChargeType(formData: FormData) {
-  const parsed = UpdateChargeTypeSchema.safeParse({
-    id:           str(formData, "id"),
-    code:         str(formData, "code"),
-    name:         str(formData, "name"),
-    default_unit: str(formData, "default_unit"),
-    taxable:      formData.get("taxable") === "true",
-  });
-  if (!parsed.success) redirect(errUrl(BASE_CAR, "error_generico"));
-
-  const supabase = await createClient();
-  const tenant   = await tenantFromHost();
-
-  const { error } = await supabase.from("charge_types").update({
-    code:         parsed.data.code,
-    name:         parsed.data.name,
-    default_unit: parsed.data.default_unit || null,
-    taxable:      parsed.data.taxable,
-  }).eq("id", parsed.data.id).eq("tenant_id", tenant.id);
-
-  if (error) redirect(errUrl(BASE_CAR, "error_generico"));
-
-  revalidatePath(BASE_CAR);
-  redirect(okUrl(BASE_CAR, "cargo_guardado"));
-}
-
-// ── Desactivar tipo de cargo ──────────────────────────────────────────────────
-export async function deactivateChargeType(formData: FormData) {
-  const id = str(formData, "id");
-  if (!id) redirect(errUrl(BASE_CAR, "error_generico"));
-
-  const supabase = await createClient();
-  const tenant   = await tenantFromHost();
-
-  const { error } = await supabase.from("charge_types")
-    .update({ active: false })
-    .eq("id", id)
-    .eq("tenant_id", tenant.id);
-
-  if (error) redirect(errUrl(BASE_CAR, "error_generico"));
-
-  revalidatePath(BASE_CAR);
-  redirect(okUrl(BASE_CAR, "cargo_desactivado"));
-}
-
-// ── Sembrar cargos por defecto ────────────────────────────────────────────────
-export async function seedChargeTypes() {
-  const supabase = await createClient();
-  const tenant   = await tenantFromHost();
-
-  const { error } = await supabase.rpc("seed_default_charge_types", {
-    _tenant: tenant.id,
-  });
-
-  if (error) redirect(errUrl(BASE_CAR, "error_generico"));
-
-  revalidatePath(BASE_CAR);
-  redirect(okUrl(BASE_CAR, "cargos_sembrados"));
 }

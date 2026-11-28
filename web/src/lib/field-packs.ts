@@ -66,9 +66,12 @@ export const kindLabel = (k: string) => ACCOUNT_KINDS.find((x) => x.value === k)
 // ─── Cotizaciones ─────────────────────────────────────────────────────────────
 
 export const QUOTE_SERVICE_TYPES = [
-  { value: "mar_import",  label: "Mar — Importación" },
-  { value: "mar_export",  label: "Mar — Exportación" },
-  { value: "aire_import", label: "Aire — Importación" },
+  { value: "mar_import",  label: "Marítimo — Importación" },
+  { value: "mar_export",  label: "Marítimo — Exportación" },
+  { value: "aire_import", label: "Aéreo — Importación"    },
+  { value: "aire_export", label: "Aéreo — Exportación"    },
+  { value: "aduana",      label: "Aduana"                 },
+  { value: "transporte",  label: "Transporte"             },
 ] as const;
 
 export const serviceTypeLabel = (v: string) =>
@@ -141,7 +144,7 @@ export const SHIPMENT_FIELD_LABELS: Record<string, string> = {
   ata:                 "Fecha real de llegada (ATA)",
 };
 
-/** Convierte el service_type de una cotización al mode/direction del embarque. */
+/** Convierte el service_type al mode/direction del embarque. Devuelve null para aduana y transporte. */
 export function serviceToModeDirection(
   serviceType: string
 ): { mode: "ocean" | "air"; direction: "import" | "export" } | null {
@@ -149,8 +152,14 @@ export function serviceToModeDirection(
     case "mar_import":  return { mode: "ocean", direction: "import" };
     case "mar_export":  return { mode: "ocean", direction: "export" };
     case "aire_import": return { mode: "air",   direction: "import" };
-    default:            return null;
+    case "aire_export": return { mode: "air",   direction: "export" };
+    default:            return null; // aduana, transporte: sin modo/dirección
   }
+}
+
+/** Clave de contador y prefijo estándar por service_type. */
+export function serviceCounterKey(serviceType: string): string {
+  return `shipments_${serviceType}`;
 }
 
 export const DOCUMENT_KIND_OPTIONS = [

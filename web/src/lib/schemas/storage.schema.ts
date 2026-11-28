@@ -3,9 +3,15 @@ import { z } from "zod";
 const UUID    = z.string().uuid();
 const dateRe  = /^\d{4}-\d{2}-\d{2}$/;
 
+export const BILLING_UNITS = ["day", "ft3", "month", "pallet", "m2"] as const;
+export type  BillingUnit   = typeof BILLING_UNITS[number];
+
 export const CreateStorageStaySchema = z.object({
   shipment_id:         UUID,
   provider_account_id: UUID.optional().or(z.literal("")),
+  warehouse_id:        UUID.optional().or(z.literal("")),
+  billing_unit:        z.enum(BILLING_UNITS).default("day"),
+  qty:                 z.coerce.number().positive().default(1),
   location_note:       z.string().max(300).optional().or(z.literal("")),
   in_date:             z.string().regex(dateRe),
   free_days:           z.coerce.number().int().min(0).default(0),

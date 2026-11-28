@@ -20,9 +20,14 @@ export const QuoteLineCostSchema = z.object({
   notes:      z.string().max(500).optional().or(z.literal("")),
 });
 
+export const SERVICE_TYPES = [
+  "mar_import", "mar_export", "aire_import", "aire_export", "aduana", "transporte",
+] as const;
+export type ServiceType = typeof SERVICE_TYPES[number];
+
 export const CreateQuoteSchema = z.object({
   account_id:   z.string().uuid(),
-  service_type: z.enum(["mar_import", "mar_export", "aire_import"]),
+  service_type: z.enum(SERVICE_TYPES),
   origin:       z.string().max(100).optional().or(z.literal("")),
   destination:  z.string().max(100).optional().or(z.literal("")),
   currency:     z.string().min(3).max(3).default("USD"),

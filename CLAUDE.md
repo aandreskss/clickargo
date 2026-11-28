@@ -131,7 +131,8 @@ campos aduanales: si dudas, deja el campo opcional y márcalo en docs/PREGUNTAS_
 | F | PDF y correo (cotizaciones + embarques) | ✅ Completa | Migración 0020 aplicada (2026-11-26); test 13 listo; @react-pdf/renderer + Resend; API routes /api/documentos/*; docs/ subida Storage con magic bytes; ajustes/plantillas; FileDropZone con kindOptions; toggle visible_to_customer; proxy Content-Disposition en archivos/[id] |
 | G | Almacenaje con terceros | ✅ Completa | repair_0018_0019 + 0021 aplicados (2026-11-26); test 14 PASS; storage_stays + storage_stay_costs (can_see_costs); calcStay() puro + 10 Vitest tests; 5 Server Actions idempotentes; tab Almacenaje en embarques/[id]; /almacenaje lista global; dashboard 2 tarjetas alerta |
 | H | Portal cliente | ✅ Completa | Migraciones 0022_portal_enum + 0022_portal_role + 0023 aplicadas; test 15 listo; portal /portal + /portal-login + /portal-accept + /seguimiento/[token]; cron /api/cron/notifications (0 9 * * *); notificaciones en /ajustes/notificaciones; tracking link en embarques/[id]; sección portal en clientes/[id]; tsc PASS |
-| I | Reportes básicos | — Siguiente — | — |
+| AJ1 | Ajuste Reglas de Negocio Box To Go | ✅ Completo | Migraciones 0024–0031 aplicadas; tests 16–17 escritos; tsc PASS + 111 Vitest verdes (2026-11-27). Nunca editar migraciones 0001–0023. |
+| I | Reportes básicos | ✅ Completa | Migración 0032 aplicada (4 vistas security_invoker + índices + log_report_export RPC); seed.sql demo (60 embarques, 42 cotizaciones, 35 con costos); tokens --color-chart-N; reportsLimiter; report.schema.ts; report-chart.tsx (BarChart + MonthlyStackedChart, sin librerías); 5 páginas Server Component + link "Reportes" en nav; API /api/reportes/[report] (CSV + BOM UTF-8 + rate limit + guard can_see_costs); test 18 (T1 multi-tenant, T2b/T2c can_see_costs, T3 anon, T4 vistas); tsc 0 errores + 111 Vitest verdes (2026-11-27). |
 
 ### Patrones establecidos (reutilizar en fases siguientes)
 - Server Actions: `tenantFromHost()`, Zod, `errUrl/okUrl` → ver `src/app/actions/quotes.ts`
@@ -201,6 +202,71 @@ campos aduanales: si dudas, deja el campo opcional y márcalo en docs/PREGUNTAS_
 - Enum PostgreSQL: `ALTER TYPE ... ADD VALUE` debe ejecutarse en transacción separada antes de usar el nuevo valor (error 55P04); patrón: archivo `0022_portal_enum.sql` solo con ALTER TYPE, luego `0022_portal_role.sql` con el resto; hacer migraciones idempotentes con `IF NOT EXISTS` / `DROP IF EXISTS` para re-ejecución segura
 - Routing sin subdominio (Vercel Hobby): `proxy.ts` detecta slug desde ruta `/t/{slug}/` cuando no hay subdominio; todas las acciones de auth y MFA reciben `base=/t/{slug}` via hidden input y construyen redirects con ese prefijo; links del layout usan `href={/t/${slug}/ruta}`; signOut también recibe `base` para redirigir al login correcto
 - Primer usuario de un tenant: insertar invitación manualmente en `tenant_invites(tenant_id, email, role)` via SQL Editor; confirmar email via `UPDATE auth.users SET email_confirmed_at = now()`; resetear contraseña olvidada via `UPDATE auth.users SET encrypted_password = crypt('pass', gen_salt('bf'))`
+- Prefijos configurables por empresa: tabla `tenant_prefix_config(tenant_id, entity_key, prefix)`; función `get_entity_prefix(_tenant, _key)` SECURITY DEFINER devuelve prefix o '' si no hay config; entity_keys: `'quotes'`, `'shipments_mar_export'`, `'shipments_mar_import'`, `'shipments_aire_export'`, `'shipments_aire_import'`, `'shipments_aduana'`, `'shipments_transporte'`; insertar prefijos manualmente post-deploy por tenant
+- customs_broker RLS isolation: política `shipments_sel` restringe el rol a `customs_managed = true AND customs_user_id = auth.uid()`; roles staff (owner/admin/manager/finance/operator/sales/viewer) ven todo; es restricción DB, no filtro UI; test 16 lo verifica
+- Almacenaje multi-unidad: `calcStay(inDate, outDate, freeDays, sellRate, billingUnit='day', qty=1)` → retorna `billablePeriods` (= billableDays para day/ft3; ceil(billableDays/30) para month/pallet/m2); `createChargeFromStay` usa billablePeriods como quantity; warehouses en tabla `public.warehouses(tenant_id, name, billing_unit, default_free_days, default_rate, currency)`; billing_unit y qty en `storage_stays`
+- Número prefactura compuesto: `create_pre_invoice()` deriva el número internamente como `quote.number + '/' + shipment.number`; si solo hay embarque, usa solo ese número; fallback contador solo si ninguno existe; columna `number_legacy` preserva numeración PF- anterior; UNIQUE(tenant_id, number)
+- charge_types catálogo global: sin tenant_id; columna `itbis_aplica` (renombrada de taxable_default); 7 categorías con ITBIS (aduana, verificacion, contenedor_adicional, cfs, dthc_lcl, fhc_lcl, tasas_aeroportuarias); ajustes/cargos es read-only (sin CRUD de usuario); cargo_form.tsx auto-setea tax_rate según itbis_aplica al seleccionar tipo
+- Vistas de reportes: `security_invoker = true` → la RLS de las tablas subyacentes aplica al usuario que consulta; sin can_see_costs → `SUM(scc.unit_cost * sc.quantity) = NULL → COALESCE(NULL, 0) = 0`; GRANTs solo a `authenticated`; anon bloqueado; patrón idéntico a `shipment_margin` (0018)
+- Exportación CSV segura: BOM UTF-8 (`﻿`) para Excel con acentos; neutralizar fórmulas (prefijo `'` si empieza con =,+,-,@,TAB,CR); `Content-Disposition: attachment`; `Cache-Control: no-store`; `X-Content-Type-Options: nosniff`; guard `can_see_costs` para rentabilidad; rate limit `reportsLimiter` (20 req/min fijo por usuario)
+- log_report_export RPC: función pública SECURITY DEFINER wrapper de `private.log_security_event`; valida membresía antes de insertar; evita necesidad de admin client en export routes; REVOKE de public/anon
+- Tokens de gráficos: `--color-chart-1..6` en globals.css; componentes `BarChart`, `StackedBar`, `MonthlyStackedChart` en `report-chart.tsx` usando divs con `width: X%` y `backgroundColor: color`; sin librerías de gráficos externas
+- Seed idempotente: `ON CONFLICT DO NOTHING` en todos los inserts; UUIDs en rango `dddd…` identificables como demo; empresa ficticia, nunca datos reales de Box To Go; llamar `seed_stage_definitions(_tenant)` RPC para etapas
+
+## REGLAS DE NEGOCIO CONFIRMADAS
+
+### CLIENTES
+- Condición de pago por cliente: contado, 15, 21 o 30 días de crédito (campo `credit_days`).
+- Listas de precios por tipo de cliente; los de buen volumen pueden tener tarifa especial. Fletes internacionales: nunca tarifa fija por cliente. Operaciones locales en RD (gestión aduanal, verificación) se clasifican por cliente.
+- Cargas freehand: costos fijos para aéreo y marítimo (FCL y LCL). Otros cargos varían según volumen y peso (LCL y aéreo).
+- Un solo contacto principal por empresa. Perfil de cliente completo (se usa para tener mejor registro).
+- Identificación fiscal OPCIONAL (nunca obligatoria, ni en la base ni en los formularios ni en la importación). Se guarda con un tipo: RNC, RUT, Tax ID, ID o VAT number. Si se llena, se valida según el tipo (en RNC: 9 u 11 dígitos); si va vacía, se acepta. La prefactura hacia ADM Cloud solo exige el RNC cuando el cliente lo tiene y el comprobante lo requiere; si falta, avisa sin bloquear.
+
+### COTIZACIONES Y EMBARQUES
+- Se llama "cotización". Cuando el cliente la aprueba se convierte en embarque con los mismos datos y se le asigna número BXT según el tipo.
+- Cotización y embarque usan SIEMPRE prefijos distintos (nunca comparten serie). Prefijos configurables por empresa (tabla, no código fijo): cotización BXCT; embarques BXTGME marítimo export, BXTGAE aéreo export, BXTGMI marítimo import, BXTGAI aéreo import, BXTA aduana, BXTT transporte. Contador por prefijo con `next_number`. Seis tipos de embarque: marítimo export/import, aéreo export/import, aduana y transporte.
+- La prefactura usa el MISMO número de la cotización y se le agrega el número de embarque para relacionarlos (ej. `"BXCT-000001/BXTGME-000002"`). Sin contador propio.
+- Parciales: un MBL/MAWB puede tener uno o más HBL/HAWB.
+- Agente de origen obligatorio en el embarque (catálogo de agentes para trazabilidad con aliados).
+- Descripción de la mercancía: texto libre, sin lista de categorías.
+
+### MARÍTIMO
+- Cualquier línea naviera (catálogo editable). El MBL lo emite solo la naviera.
+- HBL: lo emitimos nosotros o lo recibimos de un agente de origen (se usa la numeración del agente). Campo de origen del HBL: propio (`'us'`) o agente (`'origin_agent'`).
+- FCL y LCL. Hasta 15 contenedores por BL (típico 5); sin tope duro, se pueden agregar más.
+- Peso siempre en kg. POL y POD libres (no siempre Santo Domingo; el embarque puede ni tocar RD).
+- Aduana (importación): `declaracion_num`, `liquidacion_num`, `declaracion_date`, `arrival_manifest_date`, `verificacion_date`, `caja_request_date`, `igra_num`, `igra_date` (al registrarse → etapa "liberado para entrega"), `despacho_date`.
+- Exportación (es su fuerte): `booking_date`, `container_cutoff_date`, `docs_cutoff_date` (instrucciones de embarque), `container_return_date`, `vgm_date`.
+
+### AÉREO
+- Todas las aerolíneas con su handler (catálogo); algunos consolidadores neutrales.
+- Manejan MAWB y HAWB. En exportación la aerolínea asigna el número de guía MAWB y nosotros completamos los datos de la carga. En pantalla se ven ambos (MAWB y HAWB).
+
+### CARGOS Y PREFACTURA
+- Solo USD y DOP; las prefacturas pueden ser mixtas.
+- Categorías de cargo FIJAS (catálogo `charge_types`, nunca texto libre) para poder reportar rentabilidad por categoría.
+- ITBIS 18% solo en cargos locales de RD: gestión aduanal (`aduana`), verificación (`verificacion`), contenedor adicional (`contenedor_adicional`), CFS (`cfs`), DTHC LCL (`dthc_lcl`), FHC LCL (`fhc_lcl`) y tasas aeroportuarias (`tasas_aeroportuarias`). La columna se llama `itbis_aplica` (no `taxable_default`). Cálculo siempre en servidor.
+- La prefactura se envía desde el sistema y también se descarga para adjuntarla al hilo de correo del embarque.
+
+### ALMACENAJE CON TERCEROS
+- Almacenes: Rodemsa y Global Storage (tarifas negociadas que hay que actualizar) y Antillean (Miami a RD).
+- Cobro por mes, por pallet o por m2. En destino no hay días libres. Antillean en origen: 30 días libres y luego 0.50 USD por ft3 por día.
+- Entrada con fecha, y salida con fecha de entrega parcial incluyendo cantidades y detalle de lo retirado.
+
+### PORTAL Y TRACKING
+- Hoy no existe portal propio: el cliente recibe un enlace único y exclusivo por embarque (`tracking_links`, UNIQUE por shipment). Muestra lo mismo que el BL (shipper, consignee, volumen, tipo de contenedor, peso, POL/ETD, POD/ETA). Puede mostrar documentos (factura de servicios y BL) solo si la empresa lo activa por embarque.
+- Notificación al cliente de fecha de salida y aviso de llegada (automática y manual).
+- Integrar tracking con navieras/aerolíneas donde se pueda; siempre debe haber actualización manual como respaldo.
+
+### DOCUMENTOS
+- Tipos: los de la Fase F más seguro de carga. Los sube el operador al embarque.
+- PDFs que genera el sistema: BL, HBL, AWB, HAWB, prealerta, solicitud de booking, confirmación de booking, sales sheet, cotización e instrucciones de embarque.
+
+### REPORTES (pantalla + exportación a XML y .xlsx/CSV compatible con Google Sheets)
+- Prioridad: 1 ventas mensuales, 2 cuentas por pagar, 3 cuentas por cobrar por cliente, 4 ventas y comisiones por vendedor, 5 importaciones, 6 exportaciones, 7 aduanas, 8 transportes.
+
+### USUARIOS Y ROLES
+- 8 usuarios, todos empleados de Box To Go. El rol `customs_broker` (agente aduanal) solo ve los embarques que tiene asignados, marcados con `customs_managed = true` y `customs_user_id = auth.uid()`. La RLS lo garantiza; no es solo filtro de UI.
 
 ## Definición de terminado (cada tarea)
 Compila sin errores · lint sin errores · RLS probada · T1 y T7 sin hallazgos críticos ni altos ·

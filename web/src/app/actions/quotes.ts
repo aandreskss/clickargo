@@ -111,10 +111,14 @@ export async function createQuote(formData: FormData) {
   const canSeeCosts = await getCanSeeCosts(supabase, tenant.id);
   const costs = canSeeCosts ? parseCostsJson(str(formData, "line_costs"), back) : [];
 
+  const { data: quotePrefix } = await supabase.rpc("get_entity_prefix", {
+    _tenant: tenant.id,
+    _key:    "quotes",
+  });
   const { data: number, error: numErr } = await supabase.rpc("next_number", {
     _tenant: tenant.id,
     _key:    "quotes",
-    _prefix: "COT-",
+    _prefix: (quotePrefix as string | null) ?? "BXCT-",
   });
   if (numErr || !number) redirect(errUrl(back, "error_generico"));
 

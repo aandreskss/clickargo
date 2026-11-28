@@ -14,7 +14,7 @@ import {
   ContainerSchema,
 } from "@/lib/schemas/shipment.schema";
 import { canAdvance, canRollback, isRollback, TERMINAL_STAGES } from "@/lib/stage-rules";
-import { serviceToModeDirection } from "@/lib/field-packs";
+import { serviceToModeDirection, serviceCounterKey } from "@/lib/field-packs";
 import { errUrl, okUrl, type MsgKey } from "@/lib/messages";
 import { z } from "zod";
 
@@ -29,7 +29,16 @@ function parseContainersJson(raw: string): z.infer<typeof ContainerSchema>[] {
   return r.success ? r.data : [];
 }
 
-// ── Paso 1: Cliente, modo y dirección ──────────────────────────────────────────
+const SERVICE_PREFIXES: Record<string, string> = {
+  mar_import:  "BXTGMI-",
+  mar_export:  "BXTGME-",
+  aire_import: "BXTGAI-",
+  aire_export: "BXTGAE-",
+  aduana:      "BXTA-",
+  transporte:  "BXTT-",
+};
+
+// ── Paso 1: Cliente y tipo de servicio ────────────────────────────────────────
 export async function createShipmentStep1(formData: FormData) {
   const back = "/embarques/nuevo";
 
@@ -38,29 +47,28 @@ export async function createShipmentStep1(formData: FormData) {
   if (tenant.status === "suspended") redirect(errUrl(back, "empresa_suspendida"));
 
   const result = CreateShipmentStep1Schema.safeParse({
-    account_id: str(formData, "account_id"),
-    mode:       str(formData, "mode"),
-    direction:  str(formData, "direction"),
-    quote_id:   str(formData, "quote_id") || undefined,
+    account_id:   str(formData, "account_id"),
+    service_type: str(formData, "service_type"),
+    quote_id:     str(formData, "quote_id") || undefined,
   });
 
   if (!result.success) {
     const issue = result.error.issues[0]?.path?.[0];
     const key: MsgKey =
-      issue === "account_id" ? "cliente_embarque_obligatorio"
-      : issue === "mode"     ? "modo_obligatorio"
+      issue === "account_id"   ? "cliente_embarque_obligatorio"
+      : issue === "service_type" ? "modo_obligatorio"
       : "error_generico";
     redirect(errUrl(back, key));
   }
 
-  const { account_id, mode, direction, quote_id } = result.data;
+  const { account_id, service_type, quote_id } = result.data;
+  const md = serviceToModeDirection(service_type);
   const supabase = await createClient();
 
-  // Si viene de una cotización, verificarla
   if (quote_id) {
     const { data: q } = await supabase
       .from("quotes")
-      .select("id, status, account_id, service_type, notes")
+      .select("id, status")
       .eq("id", quote_id)
       .eq("tenant_id", tenant.id)
       .maybeSingle();
@@ -69,23 +77,31 @@ export async function createShipmentStep1(formData: FormData) {
     }
   }
 
+  const counterKey = serviceCounterKey(service_type);
+  const { data: prefixData } = await supabase.rpc("get_entity_prefix", {
+    _tenant: tenant.id,
+    _key:    counterKey,
+  });
+  const prefix = (prefixData as string | null) ?? SERVICE_PREFIXES[service_type] ?? "EMB-";
+
   const { data: number, error: numErr } = await supabase.rpc("next_number", {
     _tenant: tenant.id,
-    _key:    "shipments",
-    _prefix: "EMB-",
+    _key:    counterKey,
+    _prefix: prefix,
   });
   if (numErr || !number) redirect(errUrl(back, "error_generico"));
 
   const { data: ship, error: sErr } = await supabase
     .from("shipments")
     .insert({
-      tenant_id:  tenant.id,
-      number:     number as string,
+      tenant_id:    tenant.id,
+      number:       number as string,
       account_id,
-      mode,
-      direction,
-      stage_key:  "draft",
-      quote_id:   quote_id || null,
+      service_type,
+      mode:         md?.mode      ?? null,
+      direction:    md?.direction ?? null,
+      stage_key:    "draft",
+      quote_id:     quote_id || null,
     })
     .select("id")
     .single();
@@ -97,13 +113,12 @@ export async function createShipmentStep1(formData: FormData) {
     redirect(errUrl(back, key));
   }
 
-  // Insertar evento inicial
   await supabase.from("shipment_events").insert({
-    tenant_id:          tenant.id,
-    shipment_id:        ship.id,
-    kind:               "stage_changed",
-    to_stage:           "draft",
-    message:            quote_id ? "Creado desde cotización" : "Embarque creado",
+    tenant_id:           tenant.id,
+    shipment_id:         ship.id,
+    kind:                "stage_changed",
+    to_stage:            "draft",
+    message:             quote_id ? "Creado desde cotización" : "Embarque creado",
     visible_to_customer: false,
   });
 

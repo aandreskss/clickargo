@@ -16,13 +16,3 @@ export const UpdateCounterSchema = z.object({
   next_value: z.coerce.number().int().min(1).max(999999),
 });
 
-export const CreateChargeTypeSchema = z.object({
-  code:         z.string().min(2).max(10).toUpperCase(),
-  name:         z.string().min(2).max(100),
-  default_unit: z.string().max(20).optional().or(z.literal("")),
-  taxable:      z.coerce.boolean().default(false),
-});
-
-export const UpdateChargeTypeSchema = CreateChargeTypeSchema.extend({
-  id: z.string().uuid(),
-});

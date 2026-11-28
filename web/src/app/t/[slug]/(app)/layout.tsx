@@ -86,6 +86,7 @@ export default async function AppLayout({ children, params }: { children: React.
               <Link href={`/t/${slug}/embarques`} className="hover:text-[var(--color-text)]">Embarques</Link>
               <Link href={`/t/${slug}/masters`} className="hover:text-[var(--color-text)]">Masters</Link>
               <Link href={`/t/${slug}/almacenaje`} className="hover:text-[var(--color-text)]">Almacenaje</Link>
+              <Link href={`/t/${slug}/reportes`} className="hover:text-[var(--color-text)]">Reportes</Link>
               {(m.role === "owner" || m.role === "admin") && (
                 <Link href={`/t/${slug}/ajustes/empresa`} className="hover:text-[var(--color-text)]">Ajustes</Link>
               )}

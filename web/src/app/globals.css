@@ -59,6 +59,14 @@
   --shadow-sm:              0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow:                 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-card:            0 2px 8px 0 rgb(0 0 0 / 0.08);
+
+  /* Colores para gráficos (reportes) */
+  --color-chart-1:          #4f46e5;   /* indigo  */
+  --color-chart-2:          #10b981;   /* emerald */
+  --color-chart-3:          #f59e0b;   /* amber   */
+  --color-chart-4:          #ef4444;   /* red     */
+  --color-chart-5:          #8b5cf6;   /* violet  */
+  --color-chart-6:          #0ea5e9;   /* sky     */
 }
 
 /* ─── Dark mode (infraestructura lista; activar con clase .dark en <html>) ────

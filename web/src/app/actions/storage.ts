@@ -10,7 +10,7 @@ import {
   CreateChargeFromStaySchema,
   UpsertStorageStayCostSchema,
 } from "@/lib/schemas/storage.schema";
-import { calcStay, calcStayCost } from "@/lib/storage-math";
+import { calcStay, calcStayCost, type BillingUnit } from "@/lib/storage-math";
 import { errUrl, okUrl, type MsgKey } from "@/lib/messages";
 
 const str    = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -33,12 +33,15 @@ export async function createStorageStay(formData: FormData) {
   const result = CreateStorageStaySchema.safeParse({
     shipment_id:         shipmentId,
     provider_account_id: str(formData, "provider_account_id") || undefined,
-    location_note:       str(formData, "location_note") || undefined,
+    warehouse_id:        str(formData, "warehouse_id")        || undefined,
+    billing_unit:        str(formData, "billing_unit")        || "day",
+    qty:                 str(formData, "qty")                  || "1",
+    location_note:       str(formData, "location_note")       || undefined,
     in_date:             str(formData, "in_date"),
-    free_days:           str(formData, "free_days") || "0",
-    sell_rate_per_day:   str(formData, "sell_rate_per_day") || "0",
-    currency:            str(formData, "currency") || "USD",
-    notes:               str(formData, "notes") || undefined,
+    free_days:           str(formData, "free_days")           || "0",
+    sell_rate_per_day:   str(formData, "sell_rate_per_day")   || "0",
+    currency:            str(formData, "currency")            || "USD",
+    notes:               str(formData, "notes")               || undefined,
   });
   if (!result.success) redirect(errUrl(back, "error_generico"));
 
@@ -53,6 +56,9 @@ export async function createStorageStay(formData: FormData) {
       tenant_id:           tenant.id,
       shipment_id:         d.shipment_id,
       provider_account_id: d.provider_account_id || null,
+      warehouse_id:        d.warehouse_id        || null,
+      billing_unit:        d.billing_unit,
+      qty:                 d.qty,
       location_note:       d.location_note || null,
       in_date:             d.in_date,
       free_days:           d.free_days,
@@ -165,15 +171,30 @@ export async function createChargeFromStay(formData: FormData) {
     redirect(errUrl(back, "error_generico"));
   }
 
-  // Calcular días cobrables server-side
+  // Calcular según billing_unit y qty server-side
+  const billingUnit = (stay.billing_unit ?? "day") as BillingUnit;
+  const qty         = Number(stay.qty ?? 1);
   const calc = calcStay(
     new Date(stay.in_date),
     new Date(stay.out_date),
     stay.free_days,
     stay.sell_rate_per_day,
+    billingUnit,
+    qty,
   );
 
-  const description = `Almacenaje – ${calc.billableDays} día${calc.billableDays !== 1 ? "s" : ""} cobrable${calc.billableDays !== 1 ? "s" : ""}`;
+  const isMonthly = billingUnit === "month" || billingUnit === "pallet" || billingUnit === "m2";
+  const periodLabel = isMonthly
+    ? `${calc.billablePeriods} mes${calc.billablePeriods !== 1 ? "es" : ""}`
+    : `${calc.billableDays} día${calc.billableDays !== 1 ? "s" : ""}`;
+  const qtyLabel = qty !== 1 ? ` · ${qty}${billingUnit === "ft3" ? " ft³" : ` ${billingUnit}`}` : "";
+  const description = `Almacenaje – ${periodLabel} cobrable${calc.billablePeriods !== 1 ? "s" : ""}${qtyLabel}`;
+
+  // Para 'day'/'ft3': quantity=billableDays, unit='day', unit_price=qty×rate
+  // Para 'month'/'pallet'/'m2': quantity=billablePeriods, unit=billingUnit, unit_price=qty×rate
+  const chargeQuantity  = isMonthly ? calc.billablePeriods : calc.billableDays;
+  const chargeUnit      = isMonthly ? billingUnit : "day";
+  const chargeUnitPrice = qty * stay.sell_rate_per_day;
 
   // Crear shipment_charge
   const { data: charge, error: chargeErr } = await supabase
@@ -183,9 +204,9 @@ export async function createChargeFromStay(formData: FormData) {
       shipment_id:    shipmentId,
       charge_type_id: "almacenaje",
       description,
-      quantity:       calc.billableDays,
-      unit:           "day",
-      unit_price:     stay.sell_rate_per_day,
+      quantity:       chargeQuantity,
+      unit:           chargeUnit,
+      unit_price:     chargeUnitPrice,
       currency:       stay.currency,
       tax_rate:       0,
       sort_order:     0,
@@ -198,14 +219,13 @@ export async function createChargeFromStay(formData: FormData) {
   // Crear costo interno si existe tarifa de costo (solo si can_see_costs → RLS lo filtra)
   const costRecord = Array.isArray(stay.cost) ? stay.cost[0] : stay.cost;
   if (costRecord && costRecord.cost_rate_per_day > 0) {
-    const costTotal = calcStayCost(calc.billableDays, costRecord.cost_rate_per_day);
+    void calcStayCost(calc.billablePeriods, costRecord.cost_rate_per_day);
     await supabase.from("shipment_charge_costs").insert({
       shipment_charge_id: charge.id,
       tenant_id:          tenant.id,
       unit_cost:          costRecord.cost_rate_per_day,
       currency:           stay.currency,
     });
-    void costTotal; // calculado para referencia, el costo por día va en unit_cost
   }
 
   // Marcar la estadía como cargo creado (idempotencia futura)

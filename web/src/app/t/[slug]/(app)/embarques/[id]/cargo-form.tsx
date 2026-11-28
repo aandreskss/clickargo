@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Button, Field } from "@/components/ui";
 import { CHARGE_UNITS, type ChargeUnit } from "@/lib/schemas/charge.schema";
 
-type ChargeType = { code: string; name: string; default_unit: string };
+type ChargeType = { code: string; name: string; default_unit: string; itbis_aplica: boolean };
 type Account    = { id: string; name: string };
 
 const UNIT_LABELS: Record<ChargeUnit, string> = {
@@ -14,6 +14,10 @@ const UNIT_LABELS: Record<ChargeUnit, string> = {
   unit:      "Unidad",
   flat:      "Global",
   day:       "Día",
+  month:     "Mes",
+  pallet:    "Pallet",
+  m2:        "m²",
+  ft3:       "ft³",
 };
 
 export default function CargoForm({
@@ -30,14 +34,18 @@ export default function CargoForm({
   action:      (formData: FormData) => Promise<void>;
 }) {
   const formRef  = useRef<HTMLFormElement>(null);
-  const [unit, setUnit] = useState<ChargeUnit>("unit");
+  const [unit, setUnit]       = useState<ChargeUnit>("unit");
+  const [taxRate, setTaxRate] = useState("0");
   const [selectedType, setSelectedType] = useState("");
 
   function handleTypeChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const code = e.target.value;
     setSelectedType(code);
     const ct = chargeTypes.find((c) => c.code === code);
-    if (ct) setUnit(ct.default_unit as ChargeUnit);
+    if (ct) {
+      setUnit(ct.default_unit as ChargeUnit);
+      setTaxRate(ct.itbis_aplica ? "0.18" : "0");
+    }
   }
 
   return (
@@ -130,7 +138,8 @@ export default function CargoForm({
         </label>
         <select
           name="tax_rate"
-          defaultValue="0"
+          value={taxRate}
+          onChange={(e) => setTaxRate(e.target.value)}
           className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-border-focus)]"
         >
           <option value="0">Sin impuesto</option>

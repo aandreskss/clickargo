@@ -69,3 +69,69 @@ describe("calcStayCost", () => {
     expect(calcStayCost(3, 3.333)).toBe(10);
   });
 });
+
+describe("calcStay — billing_unit ft3 (Antillean)", () => {
+  it("30 días libres, 100ft3, 0.50/ft3/día → 15 días cobrables, USD 750", () => {
+    const r = calcStay(d("2024-11-01"), d("2025-01-15"), 30, 0.50, "ft3", 100);
+    expect(r.storedDays).toBe(75);
+    expect(r.billableDays).toBe(45);
+    expect(r.billablePeriods).toBe(45);
+    expect(r.sellTotal).toBe(2250);
+  });
+
+  it("Antillean benchmark del plan: 45 días almacenados, 30 libres, 100ft3, 0.50 → 750", () => {
+    const r = calcStay(d("2024-11-01"), d("2024-12-16"), 30, 0.50, "ft3", 100);
+    expect(r.storedDays).toBe(45);
+    expect(r.billableDays).toBe(15);
+    expect(r.billablePeriods).toBe(15);
+    expect(r.sellTotal).toBe(750);
+  });
+
+  it("dentro de días libres → sellTotal = 0", () => {
+    const r = calcStay(d("2024-11-01"), d("2024-11-20"), 30, 0.50, "ft3", 100);
+    expect(r.billableDays).toBe(0);
+    expect(r.sellTotal).toBe(0);
+  });
+});
+
+describe("calcStay — billing_unit month", () => {
+  it("31 días → 1 mes cobrable", () => {
+    const r = calcStay(d("2024-11-01"), d("2024-12-02"), 0, 100, "month", 1);
+    expect(r.storedDays).toBe(31);
+    expect(r.billableDays).toBe(31);
+    expect(r.billablePeriods).toBe(2);
+    expect(r.sellTotal).toBe(200);
+  });
+
+  it("30 días exactos → 1 mes", () => {
+    const r = calcStay(d("2024-11-01"), d("2024-12-01"), 0, 100, "month", 1);
+    expect(r.billablePeriods).toBe(1);
+    expect(r.sellTotal).toBe(100);
+  });
+
+  it("0 días cobrables → 0 meses → sellTotal 0", () => {
+    const r = calcStay(d("2024-11-01"), d("2024-11-05"), 10, 100, "month", 1);
+    expect(r.billableDays).toBe(0);
+    expect(r.billablePeriods).toBe(0);
+    expect(r.sellTotal).toBe(0);
+  });
+});
+
+describe("calcStay — billing_unit pallet", () => {
+  it("10 pallets, 2 meses, $5/pallet/mes → 100", () => {
+    const r = calcStay(d("2024-11-01"), d("2025-01-01"), 0, 5, "pallet", 10);
+    expect(r.storedDays).toBe(61);
+    expect(r.billablePeriods).toBe(3); // ceil(61/30)=3
+    expect(r.sellTotal).toBe(150);    // 3 * 10 * 5
+  });
+});
+
+describe("calcStay — billing_unit day con qty > 1 (retrocompat.)", () => {
+  it("day, qty=1 produce mismo resultado que antes", () => {
+    const r = calcStay(d("2024-11-01"), d("2024-11-10"), 0, 10, "day", 1);
+    expect(r.storedDays).toBe(9);
+    expect(r.billableDays).toBe(9);
+    expect(r.billablePeriods).toBe(9);
+    expect(r.sellTotal).toBe(90);
+  });
+});

@@ -3,7 +3,7 @@ import { z } from "zod";
 const UUID    = z.string().uuid();
 const optText = (max = 500) => z.string().max(max).optional().or(z.literal(""));
 
-export const CHARGE_UNITS = ["container", "kg", "cbm", "unit", "flat", "day"] as const;
+export const CHARGE_UNITS = ["container", "kg", "cbm", "unit", "flat", "day", "month", "pallet", "m2", "ft3"] as const;
 export type  ChargeUnit   = typeof CHARGE_UNITS[number];
 
 // ── Cargo de venta ─────────────────────────────────────────────────────────────
